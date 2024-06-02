@@ -1,0 +1,105 @@
+import logging
+from typing import Literal
+
+from openai import (
+    APIConnectionError,
+    APIError,
+    InternalServerError,
+    RateLimitError,
+)
+
+from .models import (
+    EmbeddingAPIConnectionError,
+    EmbeddingAPIError,
+    EmbeddingGeneratorInterface,
+    EmbeddingRateLimitedError,
+    EmbeddingResult,
+    EmbeddingServerError,
+)
+from ..llm.openai import (
+    OpenAIEmbeddingModels,
+    openai_client_factory,
+)
+from ..token_counter.models import (
+    EmbeddingTokenCounterInterface,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class OpenAIEmbeddingGenerator(EmbeddingGeneratorInterface):
+    def __init__(
+        self,
+        model: str,
+        context_limit: int,
+        dimensions: Literal[1536, 1024, 3072, None] = None,
+    ) -> None:
+        self.client = openai_client_factory()
+        self.model = model
+        self.dimensions = dimensions
+        self.context_limit = context_limit
+
+    def get_embedding(self, *, text: str) -> EmbeddingResult:
+        extra_args = {}
+        if self.dimensions is not None:
+            extra_args["dimensions"] = self.dimensions
+        try:
+            response = self.client.embeddings.create(
+                **extra_args,  # type: ignore
+                input=text,
+                model=self.model,
+            )
+        except RateLimitError as error:
+            logger.exception(
+                "Rate limted by OpenAI while generating embedding",
+            )
+            raise EmbeddingRateLimitedError from error
+
+        except APIError as error:
+            raise EmbeddingAPIError from error
+
+        except APIConnectionError as error:
+            raise EmbeddingAPIConnectionError from error
+
+        except InternalServerError as error:
+            raise EmbeddingServerError from error
+
+        return EmbeddingResult(
+            embedding=response.data[0].embedding,
+            tokens_used=response.usage.total_tokens,
+        )
+
+    def get_context_limit(self) -> int:
+        return self.context_limit
+
+    def get_model(self) -> str:
+        return self.model
+
+    def get_token_counter(self) -> EmbeddingTokenCounterInterface:
+        raise NotImplementedError
+
+
+class OpenAIADAEmbeddingGenerator(OpenAIEmbeddingGenerator):
+    def __init__(self) -> None:
+        super().__init__(
+            model=OpenAIEmbeddingModels.TEXT_ADA_002,
+            context_limit=8191,
+        )
+
+
+class OpenAITextLarge3072EmbeddingGenerator(OpenAIEmbeddingGenerator):
+    def __init__(self) -> None:
+        super().__init__(
+            model=OpenAIEmbeddingModels.TEXT_3_LARGE,
+            dimensions=3072,
+            context_limit=8191,
+        )
+
+
+class OpenAITextSmall1536EmbeddingGenerator(OpenAIEmbeddingGenerator):
+    def __init__(self) -> None:
+        super().__init__(
+            model=OpenAIEmbeddingModels.TEXT_3_SMALL,
+            dimensions=1536,
+            context_limit=8191,
+        )
