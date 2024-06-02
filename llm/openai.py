@@ -25,14 +25,18 @@ class OpenAIEmbeddingModels(StrEnum):
     TEXT_3_SMALL = "text-embedding-3-small"
 
 
-def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> dict[str, str]:
+def _ai_agent_message_to_openai_message(
+    *, message: LLMMessage
+) -> dict[str, str]:
     match message.role:
         case LLMMessageRole.USER:
             role = "user"
         case LLMMessageRole.ASSISTANT:
             role = "assistant"
         case _:
-            raise NotImplementedError(f"{message.role} is not supported for OpenAI")
+            raise NotImplementedError(
+                f"{message.role} is not supported for OpenAI"
+            )
 
     return {"role": role, "content": message.content}
 
@@ -93,13 +97,32 @@ class OpenAILLM(LLM):
                 ),
             )
 
-        raise NotImplementedError("Something went wrong with OpenAI Completion")
+        raise NotImplementedError(
+            "Something went wrong with OpenAI Completion"
+        )
 
 
 class GPT35TurboLLM(OpenAILLM):
     def __init__(self) -> None:
         super().__init__(
             model="gpt-3.5-turbo",
+            price=LLMPrice(
+                tokens=1_000_000,
+                input_tokens=0.50,
+                output_tokens=1.50,
+            ),
+            token_budget=LLMTokenBudget(
+                llm_max_token=16_385,
+                max_tokens_for_output=4000,
+                max_tokens_for_context=12000,
+            ),
+        )
+
+
+class GPT4oLLM(OpenAILLM):
+    def __init__(self) -> None:
+        super().__init__(
+            model="gpt-4o",
             price=LLMPrice(
                 tokens=1_000_000,
                 input_tokens=0.50,
