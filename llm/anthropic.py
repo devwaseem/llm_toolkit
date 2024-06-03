@@ -35,7 +35,10 @@ class AnthropicLLM(LLM):
     def get_model(self) -> str:
         return self.model
 
-    def __llm_message_to_anthropic_message(self, message: LLMMessage) -> MessageParam:
+    def __llm_message_to_anthropic_message(
+        self,
+        message: LLMMessage,
+    ) -> MessageParam:
         role: Literal["user", "assistant"]
         match message.role:
             case LLMMessageRole.USER:
@@ -84,7 +87,9 @@ class AnthropicLLM(LLM):
                 ),
             )
 
-        raise NotImplementedError("Something went wrong with Anthropic Completion")
+        raise NotImplementedError(
+            "Something went wrong with Anthropic Completion"
+        )
 
 
 class ClaudeHaikuLLM(AnthropicLLM):

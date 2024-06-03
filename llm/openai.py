@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import openai
 from django.conf import settings
@@ -7,12 +8,16 @@ from openai import OpenAI
 from .models import (
     LLM,
     LLMMessage,
+    LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMPrice,
     LLMRateLimitedError,
     LLMResponse,
     LLMTokenBudget,
 )
+
+if TYPE_CHECKING:
+    from ..types import JSON  # noqa
 
 
 def openai_client_factory() -> OpenAI:
@@ -25,9 +30,7 @@ class OpenAIEmbeddingModels(StrEnum):
     TEXT_3_SMALL = "text-embedding-3-small"
 
 
-def _ai_agent_message_to_openai_message(
-    *, message: LLMMessage
-) -> dict[str, str]:
+def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> JSON:
     match message.role:
         case LLMMessageRole.USER:
             role = "user"
@@ -39,6 +42,22 @@ def _ai_agent_message_to_openai_message(
             )
 
     return {"role": role, "content": message.content}
+
+
+class OpenAIVisionMessageBuilder(LLMMessageBuilderInterface):
+    def __init__(self) -> None:
+        self.content: list[JSON] = []
+
+    def add_image(self, *, url: str) -> "OpenAIVisionMessageBuilder":
+        self.content.append({"type": "image_url", "image_url": {"url": url}})
+        return self
+
+    def add_text(self, *, text: str) -> "OpenAIVisionMessageBuilder":
+        self.content.append({"type": "text", "text": text})
+        return self
+
+    def build_message(self, role: LLMMessageRole) -> LLMMessage:
+        return LLMMessage(role=role, content=self.content)
 
 
 class OpenAILLM(LLM):
@@ -60,9 +79,12 @@ class OpenAILLM(LLM):
         return self.model
 
     def complete_chat(
-        self, *, system_message: str, message_list: list[LLMMessage]
+        self,
+        *,
+        system_message: str,
+        message_list: list[LLMMessage],
     ) -> LLMResponse:
-        messages = [
+        messages: list[JSON] = [
             {
                 "role": "system",
                 "content": system_message,

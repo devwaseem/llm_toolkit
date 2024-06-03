@@ -2,9 +2,10 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import NamedTuple
 
+from ..types import JSON  # noqa
 
-class LLMRateLimitedError(Exception):
-    ...
+
+class LLMRateLimitedError(Exception): ...
 
 
 class LLM(ABC):
@@ -14,7 +15,10 @@ class LLM(ABC):
 
     @abstractmethod
     def complete_chat(
-        self, *, system_message: str, message_list: list["LLMMessage"]
+        self,
+        *,
+        system_message: str,
+        message_list: list["LLMMessage"],
     ) -> "LLMResponse":
         raise NotImplementedError
 
@@ -26,7 +30,13 @@ class LLMMessageRole(StrEnum):
 
 class LLMMessage(NamedTuple):
     role: LLMMessageRole
-    content: str
+    content: str | JSON
+
+
+class LLMMessageBuilderInterface(ABC):
+    @abstractmethod
+    def build_message(self, role: LLMMessageRole) -> LLMMessage:
+        raise NotImplementedError
 
 
 class LLMResponse(NamedTuple):
