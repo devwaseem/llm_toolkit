@@ -1,4 +1,5 @@
 import logging
+from enum import StrEnum
 from typing import Literal
 
 from openai import (
@@ -8,6 +9,12 @@ from openai import (
     RateLimitError,
 )
 
+from ..llm.openai import (
+    openai_client_factory,
+)
+from ..token_counter.models import (
+    EmbeddingTokenCounterInterface,
+)
 from .models import (
     EmbeddingAPIConnectionError,
     EmbeddingAPIError,
@@ -16,13 +23,13 @@ from .models import (
     EmbeddingResult,
     EmbeddingServerError,
 )
-from ..llm.openai import (
-    OpenAIEmbeddingModels,
-    openai_client_factory,
-)
-from ..token_counter.models import (
-    EmbeddingTokenCounterInterface,
-)
+
+
+class OpenAIEmbeddingModels(StrEnum):
+    TEXT_ADA_002 = "text-embedding-ada-002"
+    TEXT_3_LARGE = "text-embedding-3-large"
+    TEXT_3_SMALL = "text-embedding-3-small"
+
 
 logger = logging.getLogger(__name__)
 

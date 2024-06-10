@@ -5,7 +5,33 @@ from typing import NamedTuple
 from ..types import JSON  # noqa
 
 
-class LLMRateLimitedError(Exception): ...
+class LLMRateLimitedError(Exception):
+    ...
+
+
+class LLMAPIConnectionError(Exception):
+    ...
+
+
+class LLMInternalServerError(Exception):
+    ...
+
+
+class LLMAPITimeoutError(Exception):
+    ...
+
+
+class LLMAuthenticationError(Exception):
+    ...
+
+
+class LLMPermissionDeniedError(Exception):
+    ...
+
+
+class LLMOutputMode(StrEnum):
+    TEXT = "TEXT"
+    JSON = "JSON"
 
 
 class LLM(ABC):
@@ -19,6 +45,7 @@ class LLM(ABC):
         *,
         system_message: str,
         message_list: list["LLMMessage"],
+        output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> "LLMResponse":
         raise NotImplementedError
 

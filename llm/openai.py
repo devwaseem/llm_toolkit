@@ -1,33 +1,28 @@
-from enum import StrEnum
-from typing import TYPE_CHECKING
-
 import openai
 from django.conf import settings
 from openai import OpenAI
 
+from ..types import JSON  # noqa
 from .models import (
     LLM,
+    LLMAPIConnectionError,
+    LLMAPITimeoutError,
+    LLMAuthenticationError,
+    LLMInternalServerError,
     LLMMessage,
     LLMMessageBuilderInterface,
     LLMMessageRole,
+    LLMOutputMode,
+    LLMPermissionDeniedError,
     LLMPrice,
     LLMRateLimitedError,
     LLMResponse,
     LLMTokenBudget,
 )
 
-if TYPE_CHECKING:
-    from ..types import JSON  # noqa
-
 
 def openai_client_factory() -> OpenAI:
     return OpenAI(api_key=settings.OPENAI_API_KEY)  # type: ignore
-
-
-class OpenAIEmbeddingModels(StrEnum):
-    TEXT_ADA_002 = "text-embedding-ada-002"
-    TEXT_3_LARGE = "text-embedding-3-large"
-    TEXT_3_SMALL = "text-embedding-3-small"
 
 
 def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> JSON:
@@ -83,6 +78,7 @@ class OpenAILLM(LLM):
         *,
         system_message: str,
         message_list: list[LLMMessage],
+        output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
         messages: list[JSON] = [
             {
@@ -95,13 +91,28 @@ class OpenAILLM(LLM):
             for message in message_list
         ]
         try:
+            extra_kwargs = {}
+            if output_mode == LLMOutputMode.JSON:
+                extra_kwargs["response_format"] = {"type": "json_object"}
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,  # type: ignore
                 temperature=self.temperature,
+                **extra_kwargs,
             )
         except openai.RateLimitError as error:
             raise LLMRateLimitedError from error
+        except openai.APITimeoutError as error:
+            raise LLMAPITimeoutError from error
+        except openai.APIConnectionError as error:
+            raise LLMAPIConnectionError from error
+        except openai.InternalServerError as error:
+            raise LLMInternalServerError from error
+        except openai.AuthenticationError as error:
+            raise LLMAuthenticationError from error
+        except openai.PermissionDeniedError as error:
+            raise LLMPermissionDeniedError from error
 
         answer = response.choices[0].message.content
         if answer and response.usage:
@@ -147,8 +158,8 @@ class GPT4oLLM(OpenAILLM):
             model="gpt-4o",
             price=LLMPrice(
                 tokens=1_000_000,
-                input_tokens=0.50,
-                output_tokens=1.50,
+                input_tokens=5.0,
+                output_tokens=15.0,
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=16_385,

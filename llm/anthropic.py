@@ -1,12 +1,20 @@
+import json
 from typing import Literal
 
 import anthropic
 from anthropic.types import MessageParam
 
+from ..types import JSON  # noqa
 from .models import (
     LLM,
+    LLMAPIConnectionError,
+    LLMAPITimeoutError,
+    LLMAuthenticationError,
+    LLMInternalServerError,
     LLMMessage,
     LLMMessageRole,
+    LLMOutputMode,
+    LLMPermissionDeniedError,
     LLMPrice,
     LLMRateLimitedError,
     LLMResponse,
@@ -50,18 +58,27 @@ class AnthropicLLM(LLM):
                     f"{message.role} is not supported for Anthropic"
                 )
 
-        return MessageParam(role=role, content=message.content)
+        if isinstance(message.content, (dict, list)):
+            return MessageParam(role=role, content=json.dumps(message.content))
+        return MessageParam(role=role, content=str(message.content))
 
     def complete_chat(
         self,
         *,
         message_list: list[LLMMessage],
         system_message: str,
+        output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
         messages = [
             self.__llm_message_to_anthropic_message(message=message)
             for message in message_list
         ]
+        if output_mode == LLMOutputMode.JSON:
+            messages.append(
+                self.__llm_message_to_anthropic_message(
+                    message=LLMMessage(role=LLMMessageRole.USER, content="{"),
+                )
+            )
         try:
             assistant_message = self.client.messages.create(
                 model=self.model,
@@ -72,12 +89,26 @@ class AnthropicLLM(LLM):
             )
         except anthropic.RateLimitError as error:
             raise LLMRateLimitedError from error
+        except anthropic.APITimeoutError as error:
+            raise LLMAPITimeoutError from error
+        except anthropic.APIConnectionError as error:
+            raise LLMAPIConnectionError from error
+        except anthropic.InternalServerError as error:
+            raise LLMInternalServerError from error
+        except anthropic.AuthenticationError as error:
+            raise LLMAuthenticationError from error
+        except anthropic.PermissionDeniedError as error:
+            raise LLMPermissionDeniedError from error
+
         if assistant_message and assistant_message.content:
+            answer_text = assistant_message.content[0].text
+            if output_mode == LLMOutputMode.JSON:
+                answer_text = "{\n" + answer_text
             return LLMResponse(
                 llm_model=self.get_model(),
                 answer=LLMMessage(
                     role=LLMMessageRole.ASSISTANT,
-                    content=assistant_message.content[0].text,
+                    content=answer_text,
                 ),
                 prompt_tokens_used=assistant_message.usage.input_tokens,
                 completion_tokens_used=assistant_message.usage.output_tokens,
