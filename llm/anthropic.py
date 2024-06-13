@@ -12,6 +12,7 @@ from .models import (
     LLMAuthenticationError,
     LLMInternalServerError,
     LLMMessage,
+    LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
     LLMPermissionDeniedError,
@@ -121,6 +122,33 @@ class AnthropicLLM(LLM):
         raise NotImplementedError(
             "Something went wrong with Anthropic Completion"
         )
+
+
+class AnthropicVisionMessageBuilder(LLMMessageBuilderInterface):
+    def __init__(self) -> None:
+        self.content: list[JSON] = []
+
+    def add_base64_image(
+        self, *, mime_type: str, content: str
+    ) -> "AnthropicVisionMessageBuilder":
+        self.content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": mime_type,
+                    "data": f"'{content}'",
+                },
+            }
+        )
+        return self
+
+    def add_text(self, *, text: str) -> "AnthropicVisionMessageBuilder":
+        self.content.append({"type": "text", "text": text})
+        return self
+
+    def build_message(self, role: LLMMessageRole) -> LLMMessage:
+        return LLMMessage(role=role, content=self.content)
 
 
 class ClaudeHaikuLLM(AnthropicLLM):

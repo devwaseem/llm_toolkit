@@ -43,8 +43,15 @@ class OpenAIVisionMessageBuilder(LLMMessageBuilderInterface):
     def __init__(self) -> None:
         self.content: list[JSON] = []
 
-    def add_image(self, *, url: str) -> "OpenAIVisionMessageBuilder":
-        self.content.append({"type": "image_url", "image_url": {"url": url}})
+    def add_base64_image(
+        self,
+        *,
+        mime_type: str,  # noqa
+        content: str,
+    ) -> "OpenAIVisionMessageBuilder":
+        self.content.append(
+            {"type": "image_url", "image_url": {"url": content}}
+        )
         return self
 
     def add_text(self, *, text: str) -> "OpenAIVisionMessageBuilder":

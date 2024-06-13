@@ -62,6 +62,16 @@ class LLMMessage(NamedTuple):
 
 class LLMMessageBuilderInterface(ABC):
     @abstractmethod
+    def add_base64_image(
+        self, *, mime_type: str, content: str
+    ) -> "LLMMessageBuilderInterface":
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_text(self, *, text: str) -> "LLMMessageBuilderInterface":
+        raise NotImplementedError
+
+    @abstractmethod
     def build_message(self, role: LLMMessageRole) -> LLMMessage:
         raise NotImplementedError
 
