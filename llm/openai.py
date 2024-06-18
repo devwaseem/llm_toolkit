@@ -1,3 +1,5 @@
+from typing import override
+
 import openai
 from django.conf import settings
 from openai import OpenAI
@@ -76,26 +78,35 @@ class OpenAILLM(LLM):
         self.price = price
         self.token_budget = token_budget
         self.temperature = temperature
+        self.system_message = ""
+        self.messages: list[JSON] = []
 
+    @override
     def get_model(self) -> str:
         return self.model
 
+    @override
+    def set_system_message(self, message: str) -> None:
+        self.system_message = message
+
+    @override
+    def add_message(self, message: "LLMMessage") -> None:
+        return self.messages.append(
+            _ai_agent_message_to_openai_message(message=message)
+        )
+
+    @override
     def complete_chat(
         self,
         *,
-        system_message: str,
-        message_list: list[LLMMessage],
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
         messages: list[JSON] = [
             {
                 "role": "system",
-                "content": system_message,
-            }
-        ]
-        messages += [
-            _ai_agent_message_to_openai_message(message=message)
-            for message in message_list
+                "content": self.system_message,
+            },
+            *self.messages,
         ]
         try:
             extra_kwargs = {}

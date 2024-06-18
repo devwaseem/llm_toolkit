@@ -1,5 +1,5 @@
 import json
-from typing import Literal
+from typing import Literal, override
 
 import anthropic
 from anthropic.types import MessageParam
@@ -40,9 +40,20 @@ class AnthropicLLM(LLM):
         self.temperature = temperature
         self.token_budget = token_budget
         self.price = price
+        self.system_message = ""
+        self.messages: list[MessageParam] = []
 
+    @override
     def get_model(self) -> str:
         return self.model
+
+    @override
+    def set_system_message(self, *, message: str) -> None:
+        self.system_message = message
+
+    @override
+    def add_message(self, *, message: "LLMMessage") -> None:
+        self.messages.append(self.__llm_message_to_anthropic_message(message))
 
     def __llm_message_to_anthropic_message(
         self,
@@ -63,21 +74,19 @@ class AnthropicLLM(LLM):
             return MessageParam(role=role, content=json.dumps(message.content))
         return MessageParam(role=role, content=str(message.content))
 
+    @override
     def complete_chat(
         self,
         *,
-        message_list: list[LLMMessage],
-        system_message: str,
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
-        messages = [
-            self.__llm_message_to_anthropic_message(message=message)
-            for message in message_list
-        ]
         if output_mode == LLMOutputMode.JSON:
-            messages.append(
+            self.messages.append(
                 self.__llm_message_to_anthropic_message(
-                    message=LLMMessage(role=LLMMessageRole.USER, content="{"),
+                    message=LLMMessage(
+                        role=LLMMessageRole.USER,
+                        content="{",
+                    ),
                 )
             )
         try:
@@ -85,8 +94,8 @@ class AnthropicLLM(LLM):
                 model=self.model,
                 max_tokens=self.token_budget.max_tokens_for_output,
                 temperature=self.temperature,
-                system=system_message,
-                messages=messages,
+                system=self.system_message,
+                messages=self.messages,
             )
         except anthropic.RateLimitError as error:
             raise LLMRateLimitedError from error

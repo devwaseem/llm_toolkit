@@ -40,11 +40,17 @@ class LLM(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def set_system_message(self, *, message: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_message(self, *, message: "LLMMessage") -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     def complete_chat(
         self,
         *,
-        system_message: str,
-        message_list: list["LLMMessage"],
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> "LLMResponse":
         raise NotImplementedError
