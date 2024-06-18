@@ -82,12 +82,20 @@ class LLMMessageBuilderInterface(ABC):
         raise NotImplementedError
 
 
+class LLMStopReason(StrEnum):
+    MAX_TOKENS = "MAX_TOKENS"
+    END_TURN = "END_TURN"
+    TOOL_USE = "TOOL_USE"
+    STOP_SEQUENCE = "STOP_SEQUENCE"
+
+
 class LLMResponse(NamedTuple):
     llm_model: str
     answer: LLMMessage
     prompt_tokens_used: int
     completion_tokens_used: int
     price: float
+    stop_reason: LLMStopReason = LLMStopReason.END_TURN
 
 
 class LLMPrice(NamedTuple):

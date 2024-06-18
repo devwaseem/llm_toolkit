@@ -19,6 +19,7 @@ from .models import (
     LLMPrice,
     LLMRateLimitedError,
     LLMResponse,
+    LLMStopReason,
     LLMTokenBudget,
 )
 
@@ -132,13 +133,23 @@ class OpenAILLM(LLM):
         except openai.PermissionDeniedError as error:
             raise LLMPermissionDeniedError from error
 
-        answer = response.choices[0].message.content
-        if answer and response.usage:
+        if answer := response.choices[0]:
+            stop_reason: LLMStopReason
+            match answer.finish_reason:
+                case "stop":
+                    stop_reason = LLMStopReason.END_TURN
+                case "length":
+                    stop_reason = LLMStopReason.MAX_TOKENS
+                case "tool_calls":
+                    stop_reason = LLMStopReason.TOOL_USE
+                case _:
+                    raise NotImplementedError
+
             return LLMResponse(
                 llm_model=self.get_model(),
                 answer=LLMMessage(
                     role=LLMMessageRole.USER,
-                    content=answer,
+                    content=answer.message.content,
                 ),
                 prompt_tokens_used=response.usage.prompt_tokens,
                 completion_tokens_used=response.usage.completion_tokens,
@@ -146,6 +157,7 @@ class OpenAILLM(LLM):
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens,
                 ),
+                stop_reason=stop_reason,
             )
 
         raise NotImplementedError(

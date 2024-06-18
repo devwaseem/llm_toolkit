@@ -19,6 +19,7 @@ from .models import (
     LLMPrice,
     LLMRateLimitedError,
     LLMResponse,
+    LLMStopReason,
     LLMTokenBudget,
 )
 
@@ -110,10 +111,23 @@ class AnthropicLLM(LLM):
         except anthropic.PermissionDeniedError as error:
             raise LLMPermissionDeniedError from error
 
-        if assistant_message and assistant_message.content:
+        if assistant_message.content:
             answer_text = assistant_message.content[0].text
             if output_mode == LLMOutputMode.JSON:
                 answer_text = "{\n" + answer_text
+            stop_reason: LLMStopReason
+            match assistant_message.stop_reason:
+                case "end_turn":
+                    stop_reason = LLMStopReason.END_TURN
+                case "max_tokens":
+                    stop_reason = LLMStopReason.MAX_TOKENS
+                case "tool_use":
+                    stop_reason = LLMStopReason.TOOL_USE
+                case "stop_sequence":
+                    stop_reason = LLMStopReason.STOP_SEQUENCE
+                case _:
+                    raise NotImplementedError
+
             return LLMResponse(
                 llm_model=self.get_model(),
                 answer=LLMMessage(
@@ -126,6 +140,7 @@ class AnthropicLLM(LLM):
                     input_tokens=assistant_message.usage.input_tokens,
                     output_tokens=assistant_message.usage.output_tokens,
                 ),
+                stop_reason=stop_reason,
             )
 
         raise NotImplementedError(
