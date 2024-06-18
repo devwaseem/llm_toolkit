@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from typing import Literal, override
 
 import anthropic
@@ -16,7 +17,7 @@ from .models import (
     LLMMessageRole,
     LLMOutputMode,
     LLMPermissionDeniedError,
-    LLMPrice,
+    LLMPriceCalculator,
     LLMRateLimitedError,
     LLMResponse,
     LLMStopReason,
@@ -32,7 +33,7 @@ class AnthropicLLM(LLM):
         model: str,
         temperature: float,
         token_budget: LLMTokenBudget,
-        price: LLMPrice,
+        price_calculator: LLMPriceCalculator,
     ) -> None:
         self.client = anthropic.Anthropic(
             api_key=api_key,
@@ -40,7 +41,7 @@ class AnthropicLLM(LLM):
         self.model = model
         self.temperature = temperature
         self.token_budget = token_budget
-        self.price = price
+        self.price = price_calculator
         self.system_message = ""
         self.messages: list[MessageParam] = []
 
@@ -115,6 +116,7 @@ class AnthropicLLM(LLM):
             answer_text = assistant_message.content[0].text
             if output_mode == LLMOutputMode.JSON:
                 answer_text = "{\n" + answer_text
+
             stop_reason: LLMStopReason
             match assistant_message.stop_reason:
                 case "end_turn":
@@ -191,10 +193,10 @@ class ClaudeHaikuLLM(AnthropicLLM):
                 max_tokens_for_context=150_000,
                 max_tokens_for_output=4000,
             ),
-            price=LLMPrice(
+            price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=0.25,
-                output_tokens=1.25,
+                input_tokens=Decimal(0.25),
+                output_tokens=Decimal(1.25),
             ),
         )
 
@@ -215,9 +217,9 @@ class ClaudeSonnetLLM(AnthropicLLM):
                 max_tokens_for_context=150_000,
                 max_tokens_for_output=4000,
             ),
-            price=LLMPrice(
+            price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=3.0,
-                output_tokens=15.0,
+                input_tokens=Decimal(3.0),
+                output_tokens=Decimal(15.0),
             ),
         )

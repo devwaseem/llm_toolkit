@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import override
 
 import openai
@@ -16,7 +17,7 @@ from .models import (
     LLMMessageRole,
     LLMOutputMode,
     LLMPermissionDeniedError,
-    LLMPrice,
+    LLMPriceCalculator,
     LLMRateLimitedError,
     LLMResponse,
     LLMStopReason,
@@ -71,12 +72,12 @@ class OpenAILLM(LLM):
         *,
         model: str,
         token_budget: LLMTokenBudget,
-        price: LLMPrice,
+        price_calculator: LLMPriceCalculator,
         temperature: float = 0.5,
     ) -> None:
         self.client = openai_client_factory()
         self.model = model
-        self.price = price
+        self.price = price_calculator
         self.token_budget = token_budget
         self.temperature = temperature
         self.system_message = ""
@@ -169,10 +170,10 @@ class GPT35TurboLLM(OpenAILLM):
     def __init__(self) -> None:
         super().__init__(
             model="gpt-3.5-turbo",
-            price=LLMPrice(
+            price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=0.50,
-                output_tokens=1.50,
+                input_tokens=Decimal(0.50),
+                output_tokens=Decimal(1.50),
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=16_385,
@@ -186,10 +187,10 @@ class GPT4oLLM(OpenAILLM):
     def __init__(self) -> None:
         super().__init__(
             model="gpt-4o",
-            price=LLMPrice(
+            price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=5.0,
-                output_tokens=15.0,
+                input_tokens=Decimal(5.0),
+                output_tokens=Decimal(15.0),
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=16_385,

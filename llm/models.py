@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from decimal import Decimal
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -94,21 +95,27 @@ class LLMResponse(NamedTuple):
     answer: LLMMessage
     prompt_tokens_used: int
     completion_tokens_used: int
-    price: float
+    price: Decimal
     stop_reason: LLMStopReason = LLMStopReason.END_TURN
 
 
-class LLMPrice(NamedTuple):
+class LLMPriceCalculator(NamedTuple):
     tokens: int
-    input_tokens: float
-    output_tokens: float
+    input_tokens: Decimal
+    output_tokens: Decimal
 
-    def calculate_price(self, input_tokens: int, output_tokens: int) -> float:
-        input_price = (self.input_tokens / max(self.tokens, 1)) * input_tokens
-        output_price = (
-            self.output_tokens / max(self.tokens, 1)
-        ) * output_tokens
-        return input_price + output_price
+    def cost_per_input_token(self) -> Decimal:
+        return self.input_tokens / max(1, self.tokens)
+
+    def cost_per_output_token(self) -> Decimal:
+        return self.output_tokens / max(1, self.tokens)
+
+    def calculate_price(
+        self, input_tokens: int, output_tokens: int
+    ) -> Decimal:
+        cost_of_input_tokens = self.cost_per_input_token() * input_tokens
+        cost_of_output_tokens = self.cost_per_output_token() * output_tokens
+        return cost_of_input_tokens + cost_of_output_tokens
 
 
 class LLMTokenBudget:
