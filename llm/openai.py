@@ -43,7 +43,7 @@ def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> JSON:
     return {"role": role, "content": message.content}
 
 
-class OpenAIVisionMessageBuilder(LLMMessageBuilderInterface):
+class OpenAIMessageBuilder(LLMMessageBuilderInterface):
     def __init__(self) -> None:
         self.content: list[JSON] = []
 
@@ -52,13 +52,13 @@ class OpenAIVisionMessageBuilder(LLMMessageBuilderInterface):
         *,
         mime_type: str,  # noqa
         content: str,
-    ) -> "OpenAIVisionMessageBuilder":
+    ) -> "OpenAIMessageBuilder":
         self.content.append(
             {"type": "image_url", "image_url": {"url": content}}
         )
         return self
 
-    def add_text(self, *, text: str) -> "OpenAIVisionMessageBuilder":
+    def add_text(self, *, text: str) -> "OpenAIMessageBuilder":
         self.content.append({"type": "text", "text": text})
         return self
 
@@ -167,9 +167,10 @@ class OpenAILLM(LLM):
 
 
 class GPT35TurboLLM(OpenAILLM):
-    def __init__(self) -> None:
+    def __init__(self, temperature: float) -> None:
         super().__init__(
             model="gpt-3.5-turbo",
+            temperature=temperature,
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
                 input_tokens=Decimal(0.50),
@@ -184,9 +185,10 @@ class GPT35TurboLLM(OpenAILLM):
 
 
 class GPT4oLLM(OpenAILLM):
-    def __init__(self) -> None:
+    def __init__(self, temperature: float) -> None:
         super().__init__(
             model="gpt-4o",
+            temperature=temperature,
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
                 input_tokens=Decimal(5.0),

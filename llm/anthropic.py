@@ -86,7 +86,7 @@ class AnthropicLLM(LLM):
             self.messages.append(
                 self.__llm_message_to_anthropic_message(
                     message=LLMMessage(
-                        role=LLMMessageRole.USER,
+                        role=LLMMessageRole.ASSISTANT,
                         content="{",
                     ),
                 )
@@ -150,13 +150,13 @@ class AnthropicLLM(LLM):
         )
 
 
-class AnthropicVisionMessageBuilder(LLMMessageBuilderInterface):
+class AnthropicMessageBuilder(LLMMessageBuilderInterface):
     def __init__(self) -> None:
         self.content: list[JSON] = []
 
     def add_base64_image(
         self, *, mime_type: str, content: str
-    ) -> "AnthropicVisionMessageBuilder":
+    ) -> "AnthropicMessageBuilder":
         self.content.append(
             {
                 "type": "image",
@@ -169,7 +169,7 @@ class AnthropicVisionMessageBuilder(LLMMessageBuilderInterface):
         )
         return self
 
-    def add_text(self, *, text: str) -> "AnthropicVisionMessageBuilder":
+    def add_text(self, *, text: str) -> "AnthropicMessageBuilder":
         self.content.append({"type": "text", "text": text})
         return self
 
