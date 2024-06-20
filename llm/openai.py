@@ -5,8 +5,7 @@ import openai
 from django.conf import settings
 from openai import OpenAI
 
-from ..types import JSON  # noqa
-from .models import (
+from llm_toolkit.llm.models import (
     LLM,
     LLMAPIConnectionError,
     LLMAPITimeoutError,
@@ -23,6 +22,7 @@ from .models import (
     LLMStopReason,
     LLMTokenBudget,
 )
+from llm_toolkit.types import JSON
 
 
 def openai_client_factory() -> OpenAI:

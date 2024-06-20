@@ -3,10 +3,9 @@ from decimal import Decimal
 from typing import Literal, override
 
 import anthropic
-from anthropic.types import MessageParam
+from anthropic.types import Message, MessageParam
 
-from ..types import JSON  # noqa
-from .models import (
+from llm_toolkit.llm.models import (
     LLM,
     LLMAPIConnectionError,
     LLMAPITimeoutError,
@@ -23,6 +22,7 @@ from .models import (
     LLMStopReason,
     LLMTokenBudget,
 )
+from llm_toolkit.types import JSON  # noqa
 
 
 class AnthropicLLM(LLM):
@@ -113,22 +113,9 @@ class AnthropicLLM(LLM):
             raise LLMPermissionDeniedError from error
 
         if assistant_message.content:
-            answer_text = assistant_message.content[0].text
+            answer_text = assistant_message.content[0].text  # type: ignore
             if output_mode == LLMOutputMode.JSON:
                 answer_text = "{\n" + answer_text
-
-            stop_reason: LLMStopReason
-            match assistant_message.stop_reason:
-                case "end_turn":
-                    stop_reason = LLMStopReason.END_TURN
-                case "max_tokens":
-                    stop_reason = LLMStopReason.MAX_TOKENS
-                case "tool_use":
-                    stop_reason = LLMStopReason.TOOL_USE
-                case "stop_sequence":
-                    stop_reason = LLMStopReason.STOP_SEQUENCE
-                case _:
-                    raise NotImplementedError
 
             return LLMResponse(
                 llm_model=self.get_model(),
@@ -142,12 +129,29 @@ class AnthropicLLM(LLM):
                     input_tokens=assistant_message.usage.input_tokens,
                     output_tokens=assistant_message.usage.output_tokens,
                 ),
-                stop_reason=stop_reason,
+                stop_reason=self._generate_stop_reason(
+                    message=assistant_message
+                ),
             )
 
         raise NotImplementedError(
             "Something went wrong with Anthropic Completion"
         )
+
+    def _generate_stop_reason(self, *, message: Message) -> LLMStopReason:
+        match message.stop_reason:
+            case "end_turn":
+                stop_reason = LLMStopReason.END_TURN
+            case "max_tokens":
+                stop_reason = LLMStopReason.MAX_TOKENS
+            case "tool_use":
+                stop_reason = LLMStopReason.TOOL_USE
+            case "stop_sequence":
+                stop_reason = LLMStopReason.STOP_SEQUENCE
+            case _:
+                raise NotImplementedError
+
+        return stop_reason
 
 
 class AnthropicMessageBuilder(LLMMessageBuilderInterface):

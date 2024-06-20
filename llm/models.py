@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import NamedTuple
 
-from ..types import JSON  # noqa
+from llm_toolkit.types import JSON
 
 
 class LLMRateLimitedError(Exception):

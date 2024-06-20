@@ -1,21 +1,25 @@
 from abc import ABC, abstractmethod
 from typing import NamedTuple
 
-from ..token_counter.models import (
+from llm_toolkit.token_counter.models import (
     EmbeddingTokenCounterInterface,
 )
 
 
-class EmbeddingRateLimitedError(Exception): ...
+class EmbeddingRateLimitedError(Exception):
+    ...
 
 
-class EmbeddingAPIConnectionError(Exception): ...
+class EmbeddingAPIConnectionError(Exception):
+    ...
 
 
-class EmbeddingAPIError(Exception): ...
+class EmbeddingAPIError(Exception):
+    ...
 
 
-class EmbeddingServerError(Exception): ...
+class EmbeddingServerError(Exception):
+    ...
 
 
 class EmbeddingResult(NamedTuple):

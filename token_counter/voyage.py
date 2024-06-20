@@ -2,7 +2,7 @@ from typing import cast
 
 import voyageai
 
-from .models import (
+from llm_toolkit.token_counter.models import (
     EmbeddingTokenCounterInterface,
 )
 

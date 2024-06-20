@@ -2,9 +2,9 @@ import logging
 from typing import Literal
 
 import voyageai
-from voyageai import error as voyageai_error
+import voyageai.error
 
-from .models import (
+from llm_toolkit.embedding.models import (
     EmbeddingAPIConnectionError,
     EmbeddingAPIError,
     EmbeddingGeneratorInterface,
@@ -12,13 +12,13 @@ from .models import (
     EmbeddingResult,
     EmbeddingServerError,
 )
-from ..token_counter.models import (
+from llm_toolkit.token_counter.models import (
     EmbeddingTokenCounterInterface,
 )
-from ..token_counter.voyage import (
+from llm_toolkit.token_counter.voyage import (
     VoyageEmbeddingTokenCounter,
 )
-from ..voyage import VoyageEmbeddingModel
+from llm_toolkit.voyage import VoyageEmbeddingModel
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +43,17 @@ class VoyageAIEmbeddingGenerator(EmbeddingGeneratorInterface):
     def get_embedding(self, *, text: str) -> EmbeddingResult:
         try:
             response = self.client.embed([text], model=self.model)
-        except voyageai_error.RateLimitError as error:
-            logger.exception("Rate limited by Voyage AI while generating embedding")
+        except voyageai.error.RateLimitError as error:
+            logger.exception(
+                "Rate limited by Voyage AI while generating embedding"
+            )
             raise EmbeddingRateLimitedError from error
         except voyageai.error.APIConnectionError as error:
             raise EmbeddingAPIConnectionError from error
-        except voyageai.error.APIError as error:
-            raise EmbeddingAPIError from error
         except voyageai.error.ServerError as error:
             raise EmbeddingServerError from error
+        except voyageai.error.APIError as error:
+            raise EmbeddingAPIError from error
 
         return EmbeddingResult(
             embedding=response.embeddings[0],

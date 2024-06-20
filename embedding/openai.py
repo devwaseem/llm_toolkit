@@ -9,19 +9,19 @@ from openai import (
     RateLimitError,
 )
 
-from ..llm.openai import (
-    openai_client_factory,
-)
-from ..token_counter.models import (
-    EmbeddingTokenCounterInterface,
-)
-from .models import (
+from llm_toolkit.embedding.models import (
     EmbeddingAPIConnectionError,
     EmbeddingAPIError,
     EmbeddingGeneratorInterface,
     EmbeddingRateLimitedError,
     EmbeddingResult,
     EmbeddingServerError,
+)
+from llm_toolkit.llm.openai import (
+    openai_client_factory,
+)
+from llm_toolkit.token_counter.models import (
+    EmbeddingTokenCounterInterface,
 )
 
 
@@ -62,14 +62,14 @@ class OpenAIEmbeddingGenerator(EmbeddingGeneratorInterface):
             )
             raise EmbeddingRateLimitedError from error
 
-        except APIError as error:
-            raise EmbeddingAPIError from error
-
         except APIConnectionError as error:
             raise EmbeddingAPIConnectionError from error
 
         except InternalServerError as error:
             raise EmbeddingServerError from error
+
+        except APIError as error:
+            raise EmbeddingAPIError from error
 
         return EmbeddingResult(
             embedding=response.data[0].embedding,
