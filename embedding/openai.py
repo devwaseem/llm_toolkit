@@ -6,6 +6,7 @@ from openai import (
     APIConnectionError,
     APIError,
     InternalServerError,
+    OpenAI,
     RateLimitError,
 )
 
@@ -16,9 +17,6 @@ from llm_toolkit.embedding.models import (
     EmbeddingRateLimitedError,
     EmbeddingResult,
     EmbeddingServerError,
-)
-from llm_toolkit.llm.openai import (
-    openai_client_factory,
 )
 from llm_toolkit.token_counter.models import (
     EmbeddingTokenCounterInterface,
@@ -37,11 +35,12 @@ logger = logging.getLogger(__name__)
 class OpenAIEmbeddingGenerator(EmbeddingGeneratorInterface):
     def __init__(
         self,
+        api_key: str,
         model: str,
         context_limit: int,
         dimensions: Literal[1536, 1024, 3072, None] = None,
     ) -> None:
-        self.client = openai_client_factory()
+        self.client = OpenAI(api_key=api_key)
         self.model = model
         self.dimensions = dimensions
         self.context_limit = context_limit
@@ -87,26 +86,29 @@ class OpenAIEmbeddingGenerator(EmbeddingGeneratorInterface):
 
 
 class OpenAIADAEmbeddingGenerator(OpenAIEmbeddingGenerator):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str) -> None:
         super().__init__(
             model=OpenAIEmbeddingModels.TEXT_ADA_002,
+            api_key=api_key,
             context_limit=8191,
         )
 
 
 class OpenAITextLarge3072EmbeddingGenerator(OpenAIEmbeddingGenerator):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str) -> None:
         super().__init__(
             model=OpenAIEmbeddingModels.TEXT_3_LARGE,
+            api_key=api_key,
             dimensions=3072,
             context_limit=8191,
         )
 
 
 class OpenAITextSmall1536EmbeddingGenerator(OpenAIEmbeddingGenerator):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str) -> None:
         super().__init__(
             model=OpenAIEmbeddingModels.TEXT_3_SMALL,
+            api_key=api_key,
             dimensions=1536,
             context_limit=8191,
         )
