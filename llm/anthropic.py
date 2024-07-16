@@ -41,7 +41,7 @@ class AnthropicLLM(LLM):
         self.model = model
         self.temperature = temperature
         self.token_budget = token_budget
-        self.price = price_calculator
+        self.price_calculator = price_calculator
         self.system_message = ""
         self.messages: list[MessageParam] = []
 
@@ -125,7 +125,7 @@ class AnthropicLLM(LLM):
                 ),
                 prompt_tokens_used=assistant_message.usage.input_tokens,
                 completion_tokens_used=assistant_message.usage.output_tokens,
-                price=self.price.calculate_price(
+                cost=self.price_calculator.calculate_price(
                     input_tokens=assistant_message.usage.input_tokens,
                     output_tokens=assistant_message.usage.output_tokens,
                 ),

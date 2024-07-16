@@ -95,7 +95,7 @@ class LLMResponse(NamedTuple):
     answer: LLMMessage
     prompt_tokens_used: int
     completion_tokens_used: int
-    price: Decimal
+    cost: Decimal
     stop_reason: LLMStopReason = LLMStopReason.END_TURN
 
 

@@ -77,7 +77,7 @@ class OpenAILLM(LLM):
     ) -> None:
         self.client = openai_client_factory()
         self.model = model
-        self.price = price_calculator
+        self.price_calculator = price_calculator
         self.token_budget = token_budget
         self.temperature = temperature
         self.system_message = ""
@@ -154,7 +154,7 @@ class OpenAILLM(LLM):
                 ),
                 prompt_tokens_used=response.usage.prompt_tokens,
                 completion_tokens_used=response.usage.completion_tokens,
-                price=self.price.calculate_price(
+                cost=self.price_calculator.calculate_price(
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens,
                 ),
