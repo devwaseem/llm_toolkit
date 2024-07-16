@@ -181,7 +181,7 @@ class AnthropicMessageBuilder(LLMMessageBuilderInterface):
         return LLMMessage(role=role, content=self.content)
 
 
-class ClaudeHaikuLLM(AnthropicLLM):
+class Claude3HaikuLLM(AnthropicLLM):
     def __init__(
         self,
         *,
@@ -205,7 +205,7 @@ class ClaudeHaikuLLM(AnthropicLLM):
         )
 
 
-class ClaudeSonnetLLM(AnthropicLLM):
+class Claude3SonnetLLM(AnthropicLLM):
     def __init__(
         self,
         *,
