@@ -227,3 +227,51 @@ class Claude3SonnetLLM(AnthropicLLM):
                 output_tokens=Decimal(15.0),
             ),
         )
+
+
+class Claude3OpusLLM(AnthropicLLM):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        temperature: float = 1,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            model="claude-3-opus-20240229",
+            temperature=temperature,
+            token_budget=LLMTokenBudget(
+                llm_max_token=200_000,
+                max_tokens_for_context=195_000,
+                max_tokens_for_output=4000,
+            ),
+            price_calculator=LLMPriceCalculator(
+                tokens=1_000_000,
+                input_tokens=Decimal(15.0),
+                output_tokens=Decimal(75.0),
+            ),
+        )
+
+
+class Claude3P5SonnetLLM(AnthropicLLM):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        temperature: float = 1,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            model="claude-3-5-sonnet-20240620",
+            temperature=temperature,
+            token_budget=LLMTokenBudget(
+                llm_max_token=200_000,
+                max_tokens_for_context=195_000,
+                max_tokens_for_output=4000,
+            ),
+            price_calculator=LLMPriceCalculator(
+                tokens=1_000_000,
+                input_tokens=Decimal(3.0),
+                output_tokens=Decimal(15.0),
+            ),
+        )
