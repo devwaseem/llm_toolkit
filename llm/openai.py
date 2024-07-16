@@ -2,9 +2,9 @@ from decimal import Decimal
 from typing import override
 
 import openai
-from django.conf import settings
 from openai import OpenAI
 
+from env import Env
 from llm_toolkit.llm.models import (
     LLM,
     LLMAPIConnectionError,
@@ -70,18 +70,22 @@ class OpenAILLM(LLM):
     def __init__(
         self,
         *,
+        api_key: str,
         model: str,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
         temperature: float = 0.5,
     ) -> None:
-        self.client = openai_client_factory()
+        self.api_key = api_key
         self.model = model
         self.price_calculator = price_calculator
         self.token_budget = token_budget
         self.temperature = temperature
         self.system_message = ""
         self.messages: list[JSON] = []
+        self.client = self.init_client()
+    def init_client(self) -> OpenAI:
+        return OpenAI(api_key=self.api_key)  # type: ignore
 
     @override
     def get_model(self) -> str:
@@ -167,8 +171,9 @@ class OpenAILLM(LLM):
 
 
 class GPT35TurboLLM(OpenAILLM):
-    def __init__(self, temperature: float) -> None:
+    def __init__(self, api_key: str, temperature: float) -> None:
         super().__init__(
+            api_key=api_key,
             model="gpt-3.5-turbo",
             temperature=temperature,
             price_calculator=LLMPriceCalculator(
@@ -185,9 +190,10 @@ class GPT35TurboLLM(OpenAILLM):
 
 
 class GPT4oLLM(OpenAILLM):
-    def __init__(self, temperature: float) -> None:
+    def __init__(self, api_key: str, temperature: float) -> None:
         super().__init__(
             model="gpt-4o",
+            api_key=api_key,
             temperature=temperature,
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
