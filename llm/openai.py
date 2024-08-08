@@ -2,9 +2,8 @@ from decimal import Decimal
 from typing import override
 
 import openai
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 
-from env import Env
 from llm_toolkit.llm.models import (
     LLM,
     LLMAPIConnectionError,
@@ -23,10 +22,6 @@ from llm_toolkit.llm.models import (
     LLMTokenBudget,
 )
 from llm_toolkit.types import JSON
-
-
-def openai_client_factory() -> OpenAI:
-    return OpenAI(api_key=settings.OPENAI_API_KEY)  # type: ignore
 
 
 def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> JSON:
@@ -74,7 +69,7 @@ class OpenAILLM(LLM):
         model: str,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
-        temperature: float = 0.5,
+        temperature: float,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -83,8 +78,9 @@ class OpenAILLM(LLM):
         self.temperature = temperature
         self.system_message = ""
         self.messages: list[JSON] = []
-        self.client = self.init_client()
-    def init_client(self) -> OpenAI:
+        self.client = self.get_client()
+
+    def get_client(self) -> OpenAI:
         return OpenAI(api_key=self.api_key)  # type: ignore
 
     @override
@@ -167,6 +163,37 @@ class OpenAILLM(LLM):
 
         raise NotImplementedError(
             "Something went wrong with OpenAI Completion"
+        )
+
+
+class AzureOpenAILLM(OpenAILLM):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        api_version: str,
+        endpoint: str,
+        deployment_name: str,
+        token_budget: LLMTokenBudget,
+        price_calculator: LLMPriceCalculator,
+        temperature: float,
+    ) -> None:
+        self.api_version = api_version
+        self.endpoint = endpoint
+        super().__init__(
+            api_key=api_key,
+            model=deployment_name,
+            token_budget=token_budget,
+            price_calculator=price_calculator,
+            temperature=temperature,
+        )
+
+    @override
+    def get_client(self) -> OpenAI:
+        return AzureOpenAI(
+            api_key=self.api_key,
+            api_version=self.api_version,
+            azure_endpoint=self.endpoint,
         )
 
 
