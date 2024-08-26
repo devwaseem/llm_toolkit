@@ -5,19 +5,21 @@ from typing import Literal, override
 import anthropic
 from anthropic.types import Message, MessageParam
 
-from llm_toolkit.llm.models import (
-    LLM,
+from llm_toolkit.llm.errors import (
     LLMAPIConnectionError,
     LLMAPITimeoutError,
     LLMAuthenticationError,
     LLMInternalServerError,
+    LLMPermissionDeniedError,
+    LLMRateLimitedError,
+)
+from llm_toolkit.llm.models import (
+    LLM,
     LLMMessage,
     LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
-    LLMPermissionDeniedError,
     LLMPriceCalculator,
-    LLMRateLimitedError,
     LLMResponse,
     LLMStopReason,
     LLMTokenBudget,

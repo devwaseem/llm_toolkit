@@ -10,13 +10,15 @@ from openai import (
     RateLimitError,
 )
 
-from llm_toolkit.embedding.models import (
+from llm_toolkit.embedding.errors import (
     EmbeddingAPIConnectionError,
     EmbeddingAPIError,
-    EmbeddingGeneratorInterface,
     EmbeddingRateLimitedError,
-    EmbeddingResult,
     EmbeddingServerError,
+)
+from llm_toolkit.embedding.models import (
+    EmbeddingGeneratorInterface,
+    EmbeddingResult,
 )
 from llm_toolkit.token_counter.models import (
     EmbeddingTokenCounterInterface,

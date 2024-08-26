@@ -6,30 +6,6 @@ from typing import NamedTuple
 from llm_toolkit.types import JSON
 
 
-class LLMRateLimitedError(Exception):
-    ...
-
-
-class LLMAPIConnectionError(Exception):
-    ...
-
-
-class LLMInternalServerError(Exception):
-    ...
-
-
-class LLMAPITimeoutError(Exception):
-    ...
-
-
-class LLMAuthenticationError(Exception):
-    ...
-
-
-class LLMPermissionDeniedError(Exception):
-    ...
-
-
 class LLMOutputMode(StrEnum):
     TEXT = "TEXT"
     JSON = "JSON"

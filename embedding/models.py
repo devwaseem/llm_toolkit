@@ -6,22 +6,6 @@ from llm_toolkit.token_counter.models import (
 )
 
 
-class EmbeddingRateLimitedError(Exception):
-    ...
-
-
-class EmbeddingAPIConnectionError(Exception):
-    ...
-
-
-class EmbeddingAPIError(Exception):
-    ...
-
-
-class EmbeddingServerError(Exception):
-    ...
-
-
 class EmbeddingResult(NamedTuple):
     embedding: list[float]
     tokens_used: int
