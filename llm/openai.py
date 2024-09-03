@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import override
 
 import openai
+import structlog
 from openai import AzureOpenAI, OpenAI
 
 from llm_toolkit.llm.errors import (
@@ -24,6 +25,8 @@ from llm_toolkit.llm.models import (
     LLMTokenBudget,
 )
 from llm_toolkit.types import JSON
+
+logger = structlog.get_logger(__name__)
 
 
 def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> JSON:
@@ -90,11 +93,11 @@ class OpenAILLM(LLM):
         return self.model
 
     @override
-    def set_system_message(self, message: str) -> None:
+    def set_system_message(self, *, message: str) -> None:
         self.system_message = message
 
     @override
-    def add_message(self, message: "LLMMessage") -> None:
+    def add_message(self, *, message: "LLMMessage") -> None:
         return self.messages.append(
             _ai_agent_message_to_openai_message(message=message)
         )
@@ -112,10 +115,19 @@ class OpenAILLM(LLM):
             },
             *self.messages,
         ]
+
         try:
             extra_kwargs = {}
             if output_mode == LLMOutputMode.JSON:
                 extra_kwargs["response_format"] = {"type": "json_object"}
+
+            logger.debug(
+                "Calling OpenAI LLM",
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                extra_kwargs=extra_kwargs,
+            )
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -148,7 +160,7 @@ class OpenAILLM(LLM):
                 case _:
                     raise NotImplementedError
 
-            return LLMResponse(
+            llm_response = LLMResponse(
                 llm_model=self.get_model(),
                 answer=LLMMessage(
                     role=LLMMessageRole.USER,
@@ -162,6 +174,8 @@ class OpenAILLM(LLM):
                 ),
                 stop_reason=stop_reason,
             )
+            logger.debug("LLM Returned Response", llm_response=llm_response)
+            return llm_response
 
         raise NotImplementedError(
             "Something went wrong with OpenAI Completion"
