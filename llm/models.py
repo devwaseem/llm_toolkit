@@ -1,9 +1,7 @@
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from enum import StrEnum
-from typing import NamedTuple
-
-from llm_toolkit.types import JSON
+from typing import Any, NamedTuple
 
 
 class LLMOutputMode(StrEnum):
@@ -21,7 +19,7 @@ class LLM(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def add_message(self, *, message: "LLMMessage") -> None:
+    def add_message(self, *, message: "LLMInputMessage") -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -38,9 +36,9 @@ class LLMMessageRole(StrEnum):
     ASSISTANT = "ASSISTANT"
 
 
-class LLMMessage(NamedTuple):
+class LLMInputMessage(NamedTuple):
     role: LLMMessageRole
-    content: str | JSON
+    content: str | dict[str, Any] | list[dict[str, Any]]
 
 
 class LLMMessageBuilderInterface(ABC):
@@ -55,7 +53,7 @@ class LLMMessageBuilderInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def build_message(self, role: LLMMessageRole) -> LLMMessage:
+    def build_message(self, role: LLMMessageRole) -> LLMInputMessage:
         raise NotImplementedError
 
 
@@ -68,7 +66,7 @@ class LLMStopReason(StrEnum):
 
 class LLMResponse(NamedTuple):
     llm_model: str
-    answer: LLMMessage
+    answer: str
     prompt_tokens_used: int
     completion_tokens_used: int
     cost: Decimal

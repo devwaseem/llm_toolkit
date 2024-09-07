@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import override
+from typing import Any, override
 
 import openai
 import structlog
@@ -15,7 +15,7 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
-    LLMMessage,
+    LLMInputMessage,
     LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
@@ -24,12 +24,13 @@ from llm_toolkit.llm.models import (
     LLMStopReason,
     LLMTokenBudget,
 )
-from llm_toolkit.types import JSON
 
 logger = structlog.get_logger(__name__)
 
 
-def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> JSON:
+def _ai_agent_message_to_openai_message(
+    *, message: LLMInputMessage
+) -> dict[str, Any]:
     match message.role:
         case LLMMessageRole.USER:
             role = "user"
@@ -45,7 +46,7 @@ def _ai_agent_message_to_openai_message(*, message: LLMMessage) -> JSON:
 
 class OpenAIMessageBuilder(LLMMessageBuilderInterface):
     def __init__(self) -> None:
-        self.content: list[JSON] = []
+        self.content: list[dict[str, Any]] = []
 
     def add_base64_image(
         self,
@@ -62,8 +63,8 @@ class OpenAIMessageBuilder(LLMMessageBuilderInterface):
         self.content.append({"type": "text", "text": text})
         return self
 
-    def build_message(self, role: LLMMessageRole) -> LLMMessage:
-        return LLMMessage(role=role, content=self.content)
+    def build_message(self, role: LLMMessageRole) -> LLMInputMessage:
+        return LLMInputMessage(role=role, content=self.content)
 
 
 class OpenAILLM(LLM):
@@ -82,7 +83,7 @@ class OpenAILLM(LLM):
         self.token_budget = token_budget
         self.temperature = temperature
         self.system_message = ""
-        self.messages: list[JSON] = []
+        self.messages: list[dict[str, Any]] = []
         self.client = self.get_client()
 
     def get_client(self) -> OpenAI:
@@ -97,7 +98,7 @@ class OpenAILLM(LLM):
         self.system_message = message
 
     @override
-    def add_message(self, *, message: "LLMMessage") -> None:
+    def add_message(self, *, message: "LLMInputMessage") -> None:
         return self.messages.append(
             _ai_agent_message_to_openai_message(message=message)
         )
@@ -108,7 +109,7 @@ class OpenAILLM(LLM):
         *,
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
-        messages: list[JSON] = [
+        messages: list[dict[str, Any]] = [
             {
                 "role": "system",
                 "content": self.system_message,
@@ -162,10 +163,7 @@ class OpenAILLM(LLM):
 
             llm_response = LLMResponse(
                 llm_model=self.get_model(),
-                answer=LLMMessage(
-                    role=LLMMessageRole.USER,
-                    content=answer.message.content,
-                ),
+                answer=answer.message.content,
                 prompt_tokens_used=response.usage.prompt_tokens,
                 completion_tokens_used=response.usage.completion_tokens,
                 cost=self.price_calculator.calculate_price(

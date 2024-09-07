@@ -1,6 +1,5 @@
-import json
 from decimal import Decimal
-from typing import Literal, override
+from typing import Any, Literal, override
 
 import anthropic
 from anthropic.types import Message, MessageParam
@@ -15,7 +14,7 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
-    LLMMessage,
+    LLMInputMessage,
     LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
@@ -24,7 +23,6 @@ from llm_toolkit.llm.models import (
     LLMStopReason,
     LLMTokenBudget,
 )
-from llm_toolkit.types import JSON  # noqa
 
 
 class AnthropicLLM(LLM):
@@ -56,12 +54,12 @@ class AnthropicLLM(LLM):
         self.system_message = message
 
     @override
-    def add_message(self, *, message: "LLMMessage") -> None:
+    def add_message(self, *, message: "LLMInputMessage") -> None:
         self.messages.append(self.__llm_message_to_anthropic_message(message))
 
     def __llm_message_to_anthropic_message(
         self,
-        message: LLMMessage,
+        message: LLMInputMessage,
     ) -> MessageParam:
         role: Literal["user", "assistant"]
         match message.role:
@@ -74,9 +72,7 @@ class AnthropicLLM(LLM):
                     f"{message.role} is not supported for Anthropic"
                 )
 
-        if isinstance(message.content, (dict, list)):
-            return MessageParam(role=role, content=json.dumps(message.content))
-        return MessageParam(role=role, content=str(message.content))
+        return MessageParam(role=role, content=message.content)  # type: ignore
 
     @override
     def complete_chat(
@@ -87,7 +83,7 @@ class AnthropicLLM(LLM):
         if output_mode == LLMOutputMode.JSON:
             self.messages.append(
                 self.__llm_message_to_anthropic_message(
-                    message=LLMMessage(
+                    message=LLMInputMessage(
                         role=LLMMessageRole.ASSISTANT,
                         content="{",
                     ),
@@ -121,10 +117,7 @@ class AnthropicLLM(LLM):
 
             return LLMResponse(
                 llm_model=self.get_model(),
-                answer=LLMMessage(
-                    role=LLMMessageRole.ASSISTANT,
-                    content=answer_text,
-                ),
+                answer=answer_text,
                 prompt_tokens_used=assistant_message.usage.input_tokens,
                 completion_tokens_used=assistant_message.usage.output_tokens,
                 cost=self.price_calculator.calculate_price(
@@ -158,7 +151,7 @@ class AnthropicLLM(LLM):
 
 class AnthropicMessageBuilder(LLMMessageBuilderInterface):
     def __init__(self) -> None:
-        self.content: list[JSON] = []
+        self.content: list[dict[str, Any]] = []
 
     def add_base64_image(
         self, *, mime_type: str, content: str
@@ -179,8 +172,8 @@ class AnthropicMessageBuilder(LLMMessageBuilderInterface):
         self.content.append({"type": "text", "text": text})
         return self
 
-    def build_message(self, role: LLMMessageRole) -> LLMMessage:
-        return LLMMessage(role=role, content=self.content)
+    def build_message(self, role: LLMMessageRole) -> LLMInputMessage:
+        return LLMInputMessage(role=role, content=self.content)
 
 
 class Claude3HaikuLLM(AnthropicLLM):
