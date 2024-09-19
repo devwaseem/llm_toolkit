@@ -1,0 +1,25 @@
+Example:
+
+{
+  "23h": {
+    "name": "header",
+    "schema": {
+     "70id": {
+      "name": "invoice_id",
+      "description": "invoice id on the file"
+     }
+    }
+  },
+  "1av": [{
+  "name": "line_items",
+  "schema": {
+    "51eg": {
+      "name":"line_number",
+      "type": "number"
+    }
+  }
+  }]
+}
+
+Expected Output:
+{"23h":{"70id":"12345"},"1av":[{"51eg":1,}]}

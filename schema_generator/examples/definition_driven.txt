@@ -1,0 +1,51 @@
+Example:
+
+{
+  "definitions": {
+    "Header": {
+      "fields": {
+        "59ii": {
+          "type": "string",
+          "name": "invoice_id"
+        },
+        "16ta": {
+          "type": "float",
+          "name": "total_amount"
+        }
+      }
+    },
+    "LineItem": {
+      "LineItem": {
+        "fields": {
+          "66a": {
+            "type": "float",
+            "name": "amount"
+          },
+          "79ln": {
+            "type": "integer",
+            "name": "line_number"
+          },
+          "4q": {
+            "type": "integer",
+            "name": "quantity"
+          }
+        }
+      }
+    }
+  },
+  "fields": {
+    "23h": {
+      "type": "object",
+      "object_type": "Header",
+      "name": "header"
+    },
+    "75li": {
+      "type": "list",
+      "list_object": "LineItem",
+      "name": "line_items"
+    }
+  }
+}
+
+Output:
+{"23h":{"59ii":"INV-12345","16ta":100.0},"75li":[{"79ln":1,"4q":2,"66a":50.0}]}
