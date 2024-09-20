@@ -1,3 +1,7 @@
+- Remember the keys from the schema, and do not assume any new keys that are not in the schema.
+- While generating the Output JSON, make sure that the keys are available in schema.
+
+
 Example:
 
 {
@@ -49,3 +53,8 @@ Example:
 
 Output:
 {"23h":{"59ii":"INV-12345","16ta":100.0},"75li":[{"79ln":1,"4q":2,"66a":50.0}]}
+
+
+---
+- JSON is passed to machine, so do not generate whitespaces, newlines, or other formatting.
+- Strictly follow the schema, and do not generate any keys that are not in the schema.

@@ -29,7 +29,11 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
         self.fields = self._collect_schema_fields(schema=self.schema)
 
     def build_schema(self) -> dict[str, Any]:
-        return {"definitions": self.definitions, "fields": self.fields}
+        return {
+            "strict": True,
+            "definitions": self.definitions,
+            "fields": self.fields,
+        }
 
     def _collect_schema_definitions(self, *, schema: LLMSchemaModel) -> None:
         for attr in dir(schema):
@@ -69,8 +73,8 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
 
             field = getattr(schema, attr)
 
+            schema_obj: dict[str, Any] = {}
             if isinstance(field, Field):
-                schema_obj = {}
                 if self.should_encode:
                     schema_obj["name"] = attr
                 if field.description:
@@ -80,16 +84,8 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
 
                 schema_obj["type"] = field.value_type
 
-                encoded_key = (
-                    self._generate_key(original_key=attr)
-                    if self.should_encode
-                    else attr
-                )
-                fields[encoded_key] = schema_obj
-                self.key_cache[encoded_key] = attr
             elif isinstance(field, LLMSchemaModel):
                 model_name = type(field).__name__
-                schema_obj = {}
                 if self.should_encode:
                     schema_obj["name"] = attr
 
@@ -99,16 +95,7 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
                 schema_obj["type"] = "object"
                 schema_obj["object_type"] = model_name
 
-                encoded_key = (
-                    self._generate_key(original_key=attr)
-                    if self.should_encode
-                    else attr
-                )
-                fields[encoded_key] = schema_obj
-                self.key_cache[encoded_key] = attr
-
             elif isinstance(field, ListField):
-                schema_obj = {}
                 model_name = field.cls.__name__
                 field_instance = field.cls(**field.kwargs or {})
 
@@ -121,6 +108,7 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
                 schema_obj["type"] = "list"
                 schema_obj["list_object"] = model_name
 
+            if schema_obj:
                 encoded_key = (
                     self._generate_key(original_key=attr)
                     if self.should_encode
