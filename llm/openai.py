@@ -231,9 +231,11 @@ class GPT35TurboLLM(OpenAILLM):
 
 
 class GPT4oLLM(OpenAILLM):
-    def __init__(self, api_key: str, temperature: float) -> None:
+    def __init__(
+        self, api_key: str, temperature: float, model_suffix: str = ""
+    ) -> None:
         super().__init__(
-            model="gpt-4o",
+            model="gpt-4o" + model_suffix,
             api_key=api_key,
             temperature=temperature,
             price_calculator=LLMPriceCalculator(
