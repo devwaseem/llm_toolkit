@@ -159,8 +159,6 @@ class ListField(Generic[F]):
 
 
 class LLMSchemaModel:
-    schema_model_name = "Schema"
-
     def __init__(
         self,
         description: str = "",

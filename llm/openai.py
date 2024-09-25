@@ -125,9 +125,7 @@ class OpenAILLM(LLM):
             logger.debug(
                 "Calling OpenAI LLM",
                 model=self.model,
-                messages=messages,
                 temperature=self.temperature,
-                extra_kwargs=extra_kwargs,
             )
 
             response = self.client.chat.completions.create(
