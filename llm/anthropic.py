@@ -42,20 +42,10 @@ class AnthropicLLM(LLM):
         self.temperature = temperature
         self.token_budget = token_budget
         self.price_calculator = price_calculator
-        self.system_message = ""
-        self.messages: list[MessageParam] = []
 
     @override
     def get_model(self) -> str:
         return self.model
-
-    @override
-    def set_system_message(self, *, message: str) -> None:
-        self.system_message = message
-
-    @override
-    def add_message(self, *, message: "LLMInputMessage") -> None:
-        self.messages.append(self.__llm_message_to_anthropic_message(message))
 
     def __llm_message_to_anthropic_message(
         self,
@@ -78,10 +68,17 @@ class AnthropicLLM(LLM):
     def complete_chat(
         self,
         *,
+        messages: list[LLMInputMessage],
+        system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
+        llm_messages: list[MessageParam] = [
+            self.__llm_message_to_anthropic_message(message)
+            for message in messages
+        ]
+
         if output_mode == LLMOutputMode.JSON:
-            self.messages.append(
+            llm_messages.append(
                 self.__llm_message_to_anthropic_message(
                     message=LLMInputMessage(
                         role=LLMMessageRole.ASSISTANT,
@@ -94,8 +91,8 @@ class AnthropicLLM(LLM):
                 model=self.model,
                 max_tokens=self.token_budget.max_tokens_for_output,
                 temperature=self.temperature,
-                system=self.system_message,
-                messages=self.messages,
+                system=system_message,
+                messages=llm_messages,
             )
         except anthropic.RateLimitError as error:
             raise LLMRateLimitedError from error

@@ -9,28 +9,6 @@ class LLMOutputMode(StrEnum):
     JSON = "JSON"
 
 
-class LLM(ABC):
-    @abstractmethod
-    def get_model(self) -> str:
-        raise NotImplementedError
-
-    @abstractmethod
-    def set_system_message(self, *, message: str) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def add_message(self, *, message: "LLMInputMessage") -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def complete_chat(
-        self,
-        *,
-        output_mode: LLMOutputMode = LLMOutputMode.TEXT,
-    ) -> "LLMResponse":
-        raise NotImplementedError
-
-
 class LLMMessageRole(StrEnum):
     USER = "USER"
     ASSISTANT = "ASSISTANT"
@@ -39,6 +17,22 @@ class LLMMessageRole(StrEnum):
 class LLMInputMessage(NamedTuple):
     role: LLMMessageRole
     content: str | dict[str, Any] | list[dict[str, Any]]
+
+
+class LLM(ABC):
+    @abstractmethod
+    def get_model(self) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def complete_chat(
+        self,
+        *,
+        messages: list[LLMInputMessage],
+        system_message: str = "",
+        output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+    ) -> "LLMResponse":
+        raise NotImplementedError
 
 
 class LLMMessageBuilderInterface(ABC):

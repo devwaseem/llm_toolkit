@@ -34,6 +34,7 @@ def extract_schema_data_from_image(
     schema_generator: LLMSchemaGenerator,
 ) -> LLMExtractedImageData:
     schema = schema_generator.build_schema()
+    llm_messages = []
 
     with image_file.open("rb") as image_fd:
         base64_image = base64.b64encode(image_fd.read()).decode("utf-8")
@@ -43,21 +44,20 @@ def extract_schema_data_from_image(
             "generated invoice schema",
             invoice_schema=schema_str,
         )
-        llm.add_message(
-            message=(
+        llm_messages.append(
+            (
                 llm_message_builder.add_base64_image(
                     mime_type=mime_type,
                     content=f"data:image/png;base64,{base64_image}",
                 )
                 .add_text(text=schema_str)
                 .build_message(role=LLMMessageRole.USER)
-            ),
+            )
         )
 
-    llm.set_system_message(
-        message=(system_message + schema_generator.get_example())
-    )
     llm_response = llm.complete_chat(
+        system_message=(system_message + schema_generator.get_example()),
+        messages=llm_messages,
         output_mode=LLMOutputMode.JSON,
     )
 

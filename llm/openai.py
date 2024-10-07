@@ -82,8 +82,6 @@ class OpenAILLM(LLM):
         self.price_calculator = price_calculator
         self.token_budget = token_budget
         self.temperature = temperature
-        self.system_message = ""
-        self.messages: list[dict[str, Any]] = []
         self.client = self.get_client()
 
     def get_client(self) -> OpenAI:
@@ -94,27 +92,22 @@ class OpenAILLM(LLM):
         return self.model
 
     @override
-    def set_system_message(self, *, message: str) -> None:
-        self.system_message = message
-
-    @override
-    def add_message(self, *, message: "LLMInputMessage") -> None:
-        return self.messages.append(
-            _ai_agent_message_to_openai_message(message=message)
-        )
-
-    @override
     def complete_chat(
         self,
         *,
+        messages: list[LLMInputMessage],
+        system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
-        messages: list[dict[str, Any]] = [
+        llm_messages: list[dict[str, Any]] = [
             {
                 "role": "system",
-                "content": self.system_message,
+                "content": system_message,
             },
-            *self.messages,
+            *[
+                _ai_agent_message_to_openai_message(message=message)
+                for message in messages
+            ],
         ]
 
         try:
@@ -130,7 +123,7 @@ class OpenAILLM(LLM):
 
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=messages,  # type: ignore
+                messages=llm_messages,  # type: ignore
                 temperature=self.temperature,
                 **extra_kwargs,
             )
