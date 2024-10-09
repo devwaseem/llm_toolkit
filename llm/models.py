@@ -25,6 +25,18 @@ class LLM(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def count_tokens(self, *, text: str) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
+    def truncate_text_to_max_tokens(
+        self,
+        *,
+        text: str,
+    ) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
     def complete_chat(
         self,
         *,
@@ -89,18 +101,24 @@ class LLMPriceCalculator(NamedTuple):
 class LLMTokenBudget:
     llm_max_token: int
     max_tokens_for_context: int
-    max_tokens_for_output: int
+    _max_tokens_for_output: int | None
 
     def __init__(
         self,
         llm_max_token: int,
-        max_tokens_for_context: int,
-        max_tokens_for_output: int,
+        max_tokens_for_input: int,
+        max_tokens_for_output: int | None = None,
     ) -> None:
         self.llm_max_token = llm_max_token
-        self.max_tokens_for_output = max_tokens_for_output
-        if max_tokens_for_context > llm_max_token:
+        self._max_tokens_for_output = max_tokens_for_output
+        if max_tokens_for_input > llm_max_token:
             raise ValueError(
                 "max_tokens_for_context cannot be larger than llm_max_token"
             )
-        self.max_tokens_for_context = max_tokens_for_context
+        self.max_tokens_for_context = max_tokens_for_input
+
+    @property
+    def max_tokens_for_output(self) -> int:
+        if not self._max_tokens_for_output:
+            return self.llm_max_token - self.max_tokens_for_context
+        return self._max_tokens_for_output

@@ -47,22 +47,22 @@ class AnthropicLLM(LLM):
     def get_model(self) -> str:
         return self.model
 
-    def __llm_message_to_anthropic_message(
-        self,
-        message: LLMInputMessage,
-    ) -> MessageParam:
-        role: Literal["user", "assistant"]
-        match message.role:
-            case LLMMessageRole.USER:
-                role = "user"
-            case LLMMessageRole.ASSISTANT:
-                role = "assistant"
-            case _:
-                raise NotImplementedError(
-                    f"{message.role} is not supported for Anthropic"
-                )
+    @override
+    def count_tokens(self, *, text: str) -> int:
+        return self.client.count_tokens(text=text)
 
-        return MessageParam(role=role, content=message.content)  # type: ignore
+    @override
+    def truncate_text_to_max_tokens(
+        self,
+        *,
+        text: str,
+    ) -> str:
+        tokenizer = self.client.get_tokenizer()
+        return tokenizer.decode(
+            tokenizer.encode(text).ids[
+                : self.token_budget.max_tokens_for_context
+            ]
+        )
 
     @override
     def complete_chat(
@@ -130,6 +130,23 @@ class AnthropicLLM(LLM):
             "Something went wrong with Anthropic Completion"
         )
 
+    def __llm_message_to_anthropic_message(
+        self,
+        message: LLMInputMessage,
+    ) -> MessageParam:
+        role: Literal["user", "assistant"]
+        match message.role:
+            case LLMMessageRole.USER:
+                role = "user"
+            case LLMMessageRole.ASSISTANT:
+                role = "assistant"
+            case _:
+                raise NotImplementedError(
+                    f"{message.role} is not supported for Anthropic"
+                )
+
+        return MessageParam(role=role, content=message.content)  # type: ignore
+
     def _generate_stop_reason(self, *, message: Message) -> LLMStopReason:
         match message.stop_reason:
             case "end_turn":
@@ -186,8 +203,7 @@ class Claude3HaikuLLM(AnthropicLLM):
             temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
-                max_tokens_for_context=150_000,
-                max_tokens_for_output=4000,
+                max_tokens_for_input=190_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
@@ -210,8 +226,7 @@ class Claude3SonnetLLM(AnthropicLLM):
             temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
-                max_tokens_for_context=150_000,
-                max_tokens_for_output=4000,
+                max_tokens_for_input=190_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
@@ -234,8 +249,7 @@ class Claude3OpusLLM(AnthropicLLM):
             temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
-                max_tokens_for_context=195_000,
-                max_tokens_for_output=4000,
+                max_tokens_for_input=190_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
@@ -258,8 +272,7 @@ class Claude3P5SonnetLLM(AnthropicLLM):
             temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
-                max_tokens_for_context=195_000,
-                max_tokens_for_output=4000,
+                max_tokens_for_input=190_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,

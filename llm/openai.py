@@ -3,6 +3,7 @@ from typing import Any, override
 
 import openai
 import structlog
+import tiktoken
 from openai import AzureOpenAI, OpenAI
 
 from llm_toolkit.llm.errors import (
@@ -90,6 +91,24 @@ class OpenAILLM(LLM):
     @override
     def get_model(self) -> str:
         return self.model
+
+    @override
+    def count_tokens(self, *, text: str) -> int:
+        encoding = tiktoken.encoding_for_model(model_name=self.get_model())
+        return len(encoding.encode(text=text))
+
+    @override
+    def truncate_text_to_max_tokens(
+        self,
+        *,
+        text: str,
+    ) -> str:
+        encoding = tiktoken.encoding_for_model(model_name=self.get_model())
+        return encoding.decode(
+            encoding.encode(text=text)[
+                : self.token_budget.max_tokens_for_context
+            ]
+        )
 
     @override
     def complete_chat(
@@ -216,7 +235,7 @@ class GPT35TurboLLM(OpenAILLM):
             token_budget=LLMTokenBudget(
                 llm_max_token=16_385,
                 max_tokens_for_output=4000,
-                max_tokens_for_context=12000,
+                max_tokens_for_input=12000,
             ),
         )
 
@@ -235,8 +254,7 @@ class GPT4oLLM(OpenAILLM):
                 output_tokens=Decimal(15.0),
             ),
             token_budget=LLMTokenBudget(
-                llm_max_token=16_385,
-                max_tokens_for_output=4000,
-                max_tokens_for_context=12000,
+                llm_max_token=128_000,
+                max_tokens_for_input=120_00,
             ),
         )
