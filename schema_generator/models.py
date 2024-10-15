@@ -249,22 +249,38 @@ class LLMSchemaModel:
 
         return value
 
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), default=str)
+
     def __repr__(self) -> str:
         return json.dumps(self.to_dict())
 
 
-class LLMSchemaGenerator(ABC):
+LLMSchemaModelTypeVar = TypeVar("LLMSchemaModelTypeVar", bound=LLMSchemaModel)
+
+
+class LLMSchemaGenerator(ABC, Generic[LLMSchemaModelTypeVar]):
+    def __init__(
+        self,
+        *,
+        schema: Type[LLMSchemaModelTypeVar],
+        encoded: bool = True,
+    ) -> None:
+        self.schema = schema
+        self.encoded = encoded
+
     @abstractmethod
     def build_schema(self) -> dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
-    def is_encoded(self) -> bool:
-        raise NotImplementedError
-
-    @abstractmethod
     def decode_json(self, *, data: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
+
+    def decoded_schema(self, *, data: dict[str, Any]) -> LLMSchemaModelTypeVar:
+        return self.schema(
+            data=self.decode_json(data=data),
+        )
 
     @abstractmethod
     def get_example(self) -> str:

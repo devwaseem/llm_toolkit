@@ -56,7 +56,12 @@ class OpenAIMessageBuilder(LLMMessageBuilderInterface):
         content: str,
     ) -> "OpenAIMessageBuilder":
         self.content.append(
-            {"type": "image_url", "image_url": {"url": content}}
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": content,
+                },
+            }
         )
         return self
 

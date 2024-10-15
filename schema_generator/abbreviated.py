@@ -1,6 +1,6 @@
 from functools import cache
 from pathlib import Path
-from typing import Any, override
+from typing import Any, Type, override
 
 from llm_toolkit.schema_generator.exceptions import (
     InvalidSchemaError,
@@ -10,6 +10,7 @@ from llm_toolkit.schema_generator.models import (
     ListField,
     LLMSchemaGenerator,
     LLMSchemaModel,
+    LLMSchemaModelTypeVar,
 )
 
 
@@ -20,9 +21,13 @@ def _get_example() -> str:
 
 
 class AbbreviatedKeyLLMSchemaGenerator(LLMSchemaGenerator):
-    def __init__(self, *, schema: LLMSchemaModel, encode: bool = True) -> None:
-        self.schema = schema
-        self.should_encode = encode
+    def __init__(
+        self,
+        *,
+        schema: Type[LLMSchemaModelTypeVar],
+        encoded: bool = True,
+    ) -> None:
+        super().__init__(schema=schema, encoded=encoded)
         self.key_cache: dict[str, str] = {}
 
     @override
@@ -70,7 +75,7 @@ class AbbreviatedKeyLLMSchemaGenerator(LLMSchemaGenerator):
         return schema
 
     def _encode_key(self, *, key: str) -> str:
-        if not self.should_encode:
+        if not self.encoded:
             return key
 
         encoded_key = self.generate_key(original_key=key)
@@ -96,10 +101,6 @@ class AbbreviatedKeyLLMSchemaGenerator(LLMSchemaGenerator):
             else:
                 decoded_schema[decoded_key] = value
         return decoded_schema
-
-    @override
-    def is_encoded(self) -> bool:
-        return self.should_encode
 
     def generate_key(self, *, original_key: str) -> str:
         int_key = 0
@@ -135,8 +136,8 @@ class AbbreviatedKeyLLMSchemaGenerator(LLMSchemaGenerator):
         child_schema = {
             "name": name,
             "schema": self.__class__(
-                schema=schema,
-                encode=self.should_encode,
+                schema=schema.__class__,
+                encoded=self.encoded,
             ).build_schema(),
         }
         if schema.description:

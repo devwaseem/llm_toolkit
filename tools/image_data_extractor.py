@@ -2,12 +2,13 @@ import base64
 import json
 import mimetypes
 from pathlib import Path
-from typing import Any, NamedTuple, cast
+from typing import Any, Generic, NamedTuple, TypeVar, cast
 
 import structlog
 
 from llm_toolkit.llm.models import (
     LLM,
+    LLMInputMessage,
     LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
@@ -15,13 +16,16 @@ from llm_toolkit.llm.models import (
 )
 from llm_toolkit.schema_generator.models import (
     LLMSchemaGenerator,
+    LLMSchemaModel,
 )
 
 logger = structlog.get_logger(__name__)
 
+T = TypeVar("T", bound=LLMSchemaModel)
 
-class LLMExtractedImageData(NamedTuple):
-    json_data: dict[str, Any]
+
+class LLMExtractedImageData(NamedTuple, Generic[T]):
+    schema: T
     llm_response: LLMResponse
 
 
@@ -31,15 +35,17 @@ def extract_schema_data_from_image(
     llm_message_builder: LLMMessageBuilderInterface,
     system_message: str,
     image_file: Path,
-    schema_generator: LLMSchemaGenerator,
-) -> LLMExtractedImageData:
-    schema = schema_generator.build_schema()
-    llm_messages = []
+    schema_generator: LLMSchemaGenerator[T],
+    pre_image_llm_messages: list[LLMInputMessage] | None = None,
+    post_image_llm_messages: list[LLMInputMessage] | None = None,
+) -> LLMExtractedImageData[T]:
+    schema_dict = schema_generator.build_schema()
 
+    llm_messages = pre_image_llm_messages or []
     with image_file.open("rb") as image_fd:
         base64_image = base64.b64encode(image_fd.read()).decode("utf-8")
         mime_type = mimetypes.guess_type(url=str(image_file))[0] or "image/*"
-        schema_str = json.dumps(schema)
+        schema_str = json.dumps(schema_dict)
         logger.debug(
             "generated invoice schema",
             invoice_schema=schema_str,
@@ -54,6 +60,8 @@ def extract_schema_data_from_image(
                 .build_message(role=LLMMessageRole.USER)
             )
         )
+    if post_image_llm_messages:
+        llm_messages.extend(post_image_llm_messages)
 
     llm_response = llm.complete_chat(
         system_message=(system_message + schema_generator.get_example()),
@@ -72,13 +80,13 @@ def extract_schema_data_from_image(
 
     logger.debug("Data from LLM", response=llm_response)
 
-    decoded_json_data = (
-        schema_generator.decode_json(data=json_data)
-        if schema_generator.is_encoded()
-        else json_data
-    )
-
     return LLMExtractedImageData(
-        json_data=decoded_json_data,
+        schema=schema_generator.schema(
+            data=(
+                schema_generator.decode_json(data=json_data)
+                if schema_generator.encoded
+                else json_data
+            )
+        ),
         llm_response=llm_response,
     )
