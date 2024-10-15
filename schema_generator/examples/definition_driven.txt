@@ -7,7 +7,6 @@ Example:
 {
   "definitions": {
     "Header": {
-      "fields": {
         "59ii": {
           "type": "string",
           "name": "invoice_id"
@@ -16,24 +15,19 @@ Example:
           "type": "float",
           "name": "total_amount"
         }
-      }
     },
     "LineItem": {
-      "LineItem": {
-        "fields": {
-          "66a": {
-            "type": "float",
-            "name": "amount"
-          },
-          "79ln": {
-            "type": "integer",
-            "name": "line_number"
-          },
-          "4q": {
-            "type": "integer",
-            "name": "quantity"
-          }
-        }
+      "66a": {
+        "type": "float",
+        "name": "amount"
+      },
+      "79ln": {
+        "type": "integer",
+        "name": "line_number"
+      },
+      "4q": {
+        "type": "integer",
+        "name": "quantity"
       }
     }
   },
