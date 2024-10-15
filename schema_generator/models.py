@@ -2,7 +2,7 @@ import copy
 import json
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Generic, Type, TypeVar, override
+from typing import Any, Generic, Type, TypeVar, cast, override
 
 T = TypeVar("T", None, int, float, str, bool, datetime, list[Any])
 
@@ -251,6 +251,9 @@ class LLMSchemaModel:
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), default=str)
+
+    def to_json_safe_dict(self) -> dict[str, Any]:
+        return cast(dict[str, Any], json.loads(self.to_json()))
 
     def __repr__(self) -> str:
         return json.dumps(self.to_dict())
