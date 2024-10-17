@@ -139,10 +139,10 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
             elif isinstance(value, list):
                 items = []
                 for item in value:
-                    if isinstance(value, dict):
+                    if isinstance(item, dict):
                         items.append(self.decode_json(data=item))
                     else:
-                        items.append(value)
+                        items.append(item)
 
                 decoded_schema[decoded_key] = items
             else:
