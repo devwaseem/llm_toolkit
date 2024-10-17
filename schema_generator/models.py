@@ -256,7 +256,7 @@ class LLMSchemaModel:
         return cast(dict[str, Any], json.loads(self.to_json()))
 
     def __repr__(self) -> str:
-        return json.dumps(self.to_dict())
+        return self.to_json()
 
 
 LLMSchemaModelTypeVar = TypeVar("LLMSchemaModelTypeVar", bound=LLMSchemaModel)
