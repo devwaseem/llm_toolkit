@@ -47,8 +47,8 @@ def extract_schema_data_from_image(
         mime_type = mimetypes.guess_type(url=str(image_file))[0] or "image/*"
         schema_str = json.dumps(schema_dict)
         logger.debug(
-            "generated invoice schema",
-            invoice_schema=schema_str,
+            "generated schema",
+            schema=schema_str,
         )
         llm_messages.append(
             (
