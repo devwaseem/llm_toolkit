@@ -204,6 +204,7 @@ class Claude3HaikuLLM(AnthropicLLM):
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
+                max_tokens_for_output=4_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
@@ -227,6 +228,7 @@ class Claude3SonnetLLM(AnthropicLLM):
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
+                max_tokens_for_output=4_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
@@ -250,6 +252,7 @@ class Claude3OpusLLM(AnthropicLLM):
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
+                max_tokens_for_output=4_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
@@ -273,6 +276,7 @@ class Claude3P5SonnetLLM(AnthropicLLM):
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
+                max_tokens_for_output=4_000,
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,

@@ -239,8 +239,8 @@ class GPT35TurboLLM(OpenAILLM):
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=16_385,
-                max_tokens_for_output=4000,
                 max_tokens_for_input=12000,
+                max_tokens_for_output=4000,
             ),
         )
 
@@ -260,6 +260,7 @@ class GPT4oLLM(OpenAILLM):
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=128_000,
-                max_tokens_for_input=120_00,
+                max_tokens_for_input=124_00,
+                max_tokens_for_output=4_000,
             ),
         )
