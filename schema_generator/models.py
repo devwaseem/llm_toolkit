@@ -91,13 +91,13 @@ class StringField(Field[str]):
         return str(self._value) if self._value is not None else self.default
 
 
-class DateTimeField(Field[datetime]):
+class DateTimeField(Field[str]):
     def __init__(
         self,
         description: str = "",
         *,
         extra_kwargs: dict[str, Any] | None = None,
-        default: datetime | None = None,
+        default: str | None = None,
     ) -> None:
         if extra_kwargs is None:
             extra_kwargs = {}
@@ -112,8 +112,13 @@ class DateTimeField(Field[datetime]):
         )
 
     @override
-    def get_value(self) -> datetime | None:
+    def get_value(self) -> str | None:
         return self._value if self._value is not None else self.default
+
+    def get_value_as_datetime(self) -> datetime | None:
+        if datetime_str := self.get_value():
+            return datetime.fromisoformat(datetime_str)
+        return None
 
 
 class BooleanField(Field[bool]):
@@ -182,12 +187,7 @@ class LLMSchemaModel:
                 continue
 
             field = copy.deepcopy(getattr(self, attr))
-            if isinstance(field, DateTimeField):
-                datetime_value: datetime | None = None
-                if value:
-                    datetime_value = datetime.fromisoformat(value)
-                field.set_value(datetime_value)
-            elif isinstance(field, Field):
+            if isinstance(field, Field):
                 field.set_value(value)
             elif isinstance(field, ListField):
                 instances = [
