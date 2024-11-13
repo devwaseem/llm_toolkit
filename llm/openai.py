@@ -1,4 +1,6 @@
+import json
 from decimal import Decimal
+from hashlib import md5
 from typing import Any, override
 
 import openai
@@ -6,6 +8,7 @@ import structlog
 import tiktoken
 from openai import AzureOpenAI, OpenAI
 
+from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import (
     LLMAPIConnectionError,
     LLMAPITimeoutError,
@@ -82,6 +85,7 @@ class OpenAILLM(LLM):
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
         temperature: float,
+        response_cache: LLMResponseCache | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -89,6 +93,7 @@ class OpenAILLM(LLM):
         self.token_budget = token_budget
         self.temperature = temperature
         self.client = self.get_client()
+        self.response_cache = response_cache
 
     def get_client(self) -> OpenAI:
         return OpenAI(api_key=self.api_key)  # type: ignore
@@ -115,6 +120,21 @@ class OpenAILLM(LLM):
             ]
         )
 
+    def convert_llm_input_message_to_raw_message(
+        self, message: LLMInputMessage
+    ) -> dict[str, Any]:
+        match message.role:
+            case LLMMessageRole.USER:
+                role = "user"
+            case LLMMessageRole.ASSISTANT:
+                role = "assistant"
+            case _:
+                raise NotImplementedError(
+                    f"{message.role} is not supported for OpenAI"
+                )
+
+        return {"role": role, "content": message.content}
+
     @override
     def complete_chat(
         self,
@@ -129,22 +149,40 @@ class OpenAILLM(LLM):
                 "content": system_message,
             },
             *[
-                _ai_agent_message_to_openai_message(message=message)
+                self.convert_llm_input_message_to_raw_message(message=message)
                 for message in messages
             ],
         ]
 
+        extra_kwargs = {}
+        if output_mode == LLMOutputMode.JSON:
+            extra_kwargs["response_format"] = {"type": "json_object"}
+
+        logger.debug(
+            "Calling OpenAI LLM",
+            model=self.model,
+            temperature=self.temperature,
+        )
+
+        md5_hash = md5()
+        md5_hash.update(self.model.encode("utf-8"))
+        md5_hash.update(str(self.temperature).encode("utf-8"))
+        md5_hash.update(json.dumps(llm_messages).encode("utf-8"))
+        md5_hash.update(json.dumps(extra_kwargs).encode("utf-8"))
+        cache_key_suffix = md5_hash.hexdigest()
+        cache_key = f"openai_response::{cache_key_suffix}"
+
+        if self.response_cache:
+            cached_response = self.response_cache.get(cache_key)
+            if cached_response:
+                logger.debug(
+                    "Using cached response",
+                    cache_key=cache_key,
+                    cached_response=cached_response,
+                )
+                return cached_response
+
         try:
-            extra_kwargs = {}
-            if output_mode == LLMOutputMode.JSON:
-                extra_kwargs["response_format"] = {"type": "json_object"}
-
-            logger.debug(
-                "Calling OpenAI LLM",
-                model=self.model,
-                temperature=self.temperature,
-            )
-
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=llm_messages,  # type: ignore
@@ -188,6 +226,10 @@ class OpenAILLM(LLM):
                 stop_reason=stop_reason,
             )
             logger.debug("LLM Returned Response", llm_response=llm_response)
+
+            if self.response_cache:
+                self.response_cache.set(cache_key, llm_response)
+
             return llm_response
 
         raise NotImplementedError(
@@ -206,10 +248,12 @@ class AzureOpenAILLM(OpenAILLM):
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
         temperature: float,
+        response_cache: LLMResponseCache | None = None,
     ) -> None:
         self.api_version = api_version
         self.endpoint = endpoint
         super().__init__(
+            response_cache=response_cache,
             api_key=api_key,
             model=deployment_name,
             token_budget=token_budget,
@@ -227,8 +271,14 @@ class AzureOpenAILLM(OpenAILLM):
 
 
 class GPT35TurboLLM(OpenAILLM):
-    def __init__(self, api_key: str, temperature: float) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        temperature: float,
+        response_cache: LLMResponseCache | None = None,
+    ) -> None:
         super().__init__(
+            response_cache=response_cache,
             api_key=api_key,
             model="gpt-3.5-turbo",
             temperature=temperature,
@@ -247,9 +297,14 @@ class GPT35TurboLLM(OpenAILLM):
 
 class GPT4oLLM(OpenAILLM):
     def __init__(
-        self, api_key: str, temperature: float, model_suffix: str = ""
+        self,
+        api_key: str,
+        temperature: float,
+        model_suffix: str = "",
+        response_cache: LLMResponseCache | None = None,
     ) -> None:
         super().__init__(
+            response_cache=response_cache,
             model="gpt-4o" + model_suffix,
             api_key=api_key,
             temperature=temperature,
