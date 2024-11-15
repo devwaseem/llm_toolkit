@@ -21,7 +21,9 @@ def _get_example() -> str:
     return example_file.read_text()
 
 
-class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
+class DefinitionDrivenLLMSchemaGenerator(
+    LLMSchemaGenerator[LLMSchemaModelTypeVar]
+):
     def __init__(
         self,
         *,
@@ -45,7 +47,7 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
         }
 
     def _collect_schema_definitions(
-        self, *, schema: Type[LLMSchemaModelTypeVar]
+        self, *, schema: Type[LLMSchemaModel]
     ) -> None:
         for attr in dir(schema):
             if attr.startswith("_"):
@@ -67,7 +69,7 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
                     )
 
     def _collect_schema_fields(  # noqa
-        self, *, schema: Type[LLMSchemaModelTypeVar]
+        self, *, schema: Type[LLMSchemaModel]
     ) -> dict[str, Any]:
         fields = {}
         for attr in dir(schema):
@@ -150,12 +152,12 @@ class DefinitionDrivenLLMSchemaGenerator(LLMSchemaGenerator):
         return decoded_schema
 
     def _generate_key(self, *, original_key: str) -> str:
-        int_key = 0
-        for char in original_key:
-            int_key += ord(char)
+        int_key = abs(hash(original_key))
         return str(int_key % 99) + "".join(
             [i[0] for i in original_key.split("_")]
         )
 
     def get_example(self) -> str:
-        return _get_example()
+        if self.encoded:
+            return _get_example()
+        return ""
