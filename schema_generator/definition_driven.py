@@ -1,5 +1,6 @@
 import inspect
 from functools import cache
+from hashlib import md5
 from pathlib import Path
 from typing import Any, Type, override
 
@@ -152,10 +153,8 @@ class DefinitionDrivenLLMSchemaGenerator(
         return decoded_schema
 
     def _generate_key(self, *, original_key: str) -> str:
-        int_key = abs(hash(original_key))
-        return str(int_key % 99) + "".join(
-            [i[0] for i in original_key.split("_")]
-        )
+        key_hash = md5(original_key.encode("utf-8")).hexdigest()
+        return key_hash[:2] + "".join([i[0] for i in original_key.split("_")])
 
     def get_example(self) -> str:
         if self.encoded:
