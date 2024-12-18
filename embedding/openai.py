@@ -59,7 +59,7 @@ class OpenAIEmbeddingGenerator(EmbeddingGeneratorInterface):
             )
         except RateLimitError as error:
             logger.exception(
-                "Rate limted by OpenAI while generating embedding",
+                "Rate limited by OpenAI while generating embedding",
             )
             raise EmbeddingRateLimitedError from error
 
