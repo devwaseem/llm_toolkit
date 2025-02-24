@@ -20,6 +20,7 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
+    ImageDataExtractorLLM,
     LLMInputImage,
     LLMInputMessage,
     LLMMessageBuilderInterface,
@@ -43,7 +44,7 @@ class OpenAIMessageBuilder(LLMMessageBuilderInterface):
     def add_base64_image(
         self,
         *,
-        mime_type: str,  # noqa
+        mime_type: str,
         content: str,
     ) -> Self:
         self.content.append(
@@ -69,11 +70,12 @@ class OpenAIMessageBuilder(LLMMessageBuilderInterface):
 class OpenAILLM(LLM):
     _api_key: str
     _model: str
-    _token_budget: LLMTokenBudget
-    _price_calculator: LLMPriceCalculator
-    _temperature: float
     _response_cache: LLMResponseCache | None
     _client: OpenAI
+
+    token_budget: LLMTokenBudget
+    price_calculator: LLMPriceCalculator
+    temperature: float
 
     def __init__(
         self,
@@ -87,9 +89,9 @@ class OpenAILLM(LLM):
     ) -> None:
         self._api_key = api_key
         self._model = model
-        self._price_calculator = price_calculator
-        self._token_budget = token_budget
-        self._temperature = temperature
+        self.price_calculator = price_calculator
+        self.token_budget = token_budget
+        self.temperature = temperature
         self._client = self.get_client()
         self._response_cache = response_cache
 
@@ -113,7 +115,9 @@ class OpenAILLM(LLM):
     ) -> str:
         encoding = tiktoken.encoding_for_model(model_name=self.get_model())
         return encoding.decode(
-            encoding.encode(text=text)[: self._token_budget.max_tokens_for_context]
+            encoding.encode(text=text)[
+                : self.token_budget.max_tokens_for_context
+            ]
         )
 
     @override
@@ -142,7 +146,7 @@ class OpenAILLM(LLM):
         logger.debug(
             "Calling OpenAI LLM",
             model=self._model,
-            temperature=self._temperature,
+            temperature=self.temperature,
         )
 
         cache_key = ""
@@ -150,7 +154,7 @@ class OpenAILLM(LLM):
         if self._response_cache:
             md5_hash = md5()
             md5_hash.update(self._model.encode("utf-8"))
-            md5_hash.update(str(self._temperature).encode("utf-8"))
+            md5_hash.update(str(self.temperature).encode("utf-8"))
             md5_hash.update(json.dumps(llm_messages).encode("utf-8"))
             md5_hash.update(json.dumps(extra_kwargs).encode("utf-8"))
             cache_key_suffix = md5_hash.hexdigest()
@@ -169,7 +173,7 @@ class OpenAILLM(LLM):
             response = self._client.chat.completions.create(
                 model=self._model,
                 messages=llm_messages,  # type: ignore
-                temperature=self._temperature,
+                temperature=self.temperature,
                 **extra_kwargs,
             )
         except openai.RateLimitError as error:
@@ -202,7 +206,7 @@ class OpenAILLM(LLM):
                 answer=answer.message.content,
                 prompt_tokens_used=response.usage.prompt_tokens,
                 completion_tokens_used=response.usage.completion_tokens,
-                cost=self._price_calculator.calculate_price(
+                cost=self.price_calculator.calculate_price(
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens,
                 ),
@@ -216,7 +220,9 @@ class OpenAILLM(LLM):
 
             return llm_response
 
-        raise NotImplementedError("Something went wrong with OpenAI Completion")
+        raise NotImplementedError(
+            "Something went wrong with OpenAI Completion"
+        )
 
     def _convert_llm_input_message_to_raw_message(
         self, message: LLMInputMessage
@@ -227,7 +233,9 @@ class OpenAILLM(LLM):
             case LLMMessageRole.ASSISTANT:
                 role = "assistant"
             case _:
-                raise NotImplementedError(f"{message.role} is not supported for OpenAI")
+                raise NotImplementedError(
+                    f"{message.role} is not supported for OpenAI"
+                )
 
         if isinstance(message.content, str):
             return {"role": role, "content": message.content}
@@ -307,7 +315,7 @@ class GPT35TurboLLM(OpenAILLM):
         )
 
 
-class GPT4oLLM(OpenAILLM):
+class GPT4oLLM(OpenAILLM, ImageDataExtractorLLM):
     def __init__(
         self,
         api_key: str,

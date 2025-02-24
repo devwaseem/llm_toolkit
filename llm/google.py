@@ -1,12 +1,19 @@
+try:
+    from google import genai
+except ImportError:
+    raise ImportError("Please install google-genai to use Google LLM")
+
+import logging
 from decimal import Decimal
 from typing import Any, override
 
 from google.genai.types import Candidate, FinishReason, GenerateContentConfig
-import structlog
+
 from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import LLMEmptyResponseError
 from llm_toolkit.llm.models import (
     LLM,
+    ImageDataExtractorLLM,
     LLMInputImage,
     LLMInputMessage,
     LLMMessageRole,
@@ -16,9 +23,8 @@ from llm_toolkit.llm.models import (
     LLMStopReason,
     LLMTokenBudget,
 )
-from google import genai
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class GoogleLLM(LLM):
@@ -29,7 +35,7 @@ class GoogleLLM(LLM):
         price_calculator: LLMPriceCalculator,
         temperature: float,
         response_cache: LLMResponseCache | None = None,
-    ):
+    ) -> None:
         self.api_key = api_key
         self.model = model
 
@@ -65,8 +71,7 @@ class GoogleLLM(LLM):
         raise NotImplementedError
 
     def get_client(self) -> genai.Client:
-        client = genai.Client(api_key=self.api_key)
-        return client
+        return genai.Client(api_key=self.api_key)
 
     @override
     def complete_chat(
@@ -96,8 +101,6 @@ class GoogleLLM(LLM):
                 response_mime_type=response_mime_type,
             ),
         )
-
-        logger.debug("Data from LLM", response=response)
 
         if not response.candidates:
             raise LLMEmptyResponseError
@@ -140,7 +143,8 @@ class GoogleLLM(LLM):
                 return LLMStopReason.MAX_TOKENS
             case _:
                 raise ValueError(
-                    f"Unknown finish reason: {response_candidate.finish_reason}"
+                    "Unknown finish reason: "
+                    + str(response_candidate.finish_reason)
                 )
 
     def _convert_llm_input_message_to_raw_message(
@@ -152,7 +156,9 @@ class GoogleLLM(LLM):
             case LLMMessageRole.ASSISTANT:
                 role = "model"
             case _:
-                raise ValueError(f"{message.role} is not supported for Google AI")
+                raise ValueError(
+                    f"{message.role} is not supported for Google AI"
+                )
 
         if isinstance(message.content, str):
             return {
@@ -178,7 +184,7 @@ class GoogleLLM(LLM):
         raise NotImplementedError(f"Unhandled message type: {message}")
 
 
-class Gemini2_0_Flash(GoogleLLM):
+class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
     def __init__(self, api_key: str, temperature: float) -> None:
         super().__init__(
             api_key=api_key,
