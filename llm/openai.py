@@ -1,7 +1,8 @@
 import json
 from decimal import Decimal
 from hashlib import md5
-from typing import Any, override
+from typing import Any, Self, override
+from warnings import deprecated
 
 import openai
 import structlog
@@ -19,6 +20,7 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
+    LLMInputImage,
     LLMInputMessage,
     LLMMessageBuilderInterface,
     LLMMessageRole,
@@ -32,32 +34,18 @@ from llm_toolkit.llm.models import (
 logger = structlog.get_logger(__name__)
 
 
-def _ai_agent_message_to_openai_message(
-    *, message: LLMInputMessage
-) -> dict[str, Any]:
-    match message.role:
-        case LLMMessageRole.USER:
-            role = "user"
-        case LLMMessageRole.ASSISTANT:
-            role = "assistant"
-        case _:
-            raise NotImplementedError(
-                f"{message.role} is not supported for OpenAI"
-            )
-
-    return {"role": role, "content": message.content}
-
-
+@deprecated("Use LLMInputImage instead")
 class OpenAIMessageBuilder(LLMMessageBuilderInterface):
     def __init__(self) -> None:
         self.content: list[dict[str, Any]] = []
 
+    @override
     def add_base64_image(
         self,
         *,
         mime_type: str,  # noqa
         content: str,
-    ) -> "OpenAIMessageBuilder":
+    ) -> Self:
         self.content.append(
             {
                 "type": "image_url",
@@ -68,15 +56,25 @@ class OpenAIMessageBuilder(LLMMessageBuilderInterface):
         )
         return self
 
-    def add_text(self, *, text: str) -> "OpenAIMessageBuilder":
+    @override
+    def add_text(self, *, text: str) -> Self:
         self.content.append({"type": "text", "text": text})
         return self
 
+    @override
     def build_message(self, role: LLMMessageRole) -> LLMInputMessage:
         return LLMInputMessage(role=role, content=self.content)
 
 
 class OpenAILLM(LLM):
+    _api_key: str
+    _model: str
+    _token_budget: LLMTokenBudget
+    _price_calculator: LLMPriceCalculator
+    _temperature: float
+    _response_cache: LLMResponseCache | None
+    _client: OpenAI
+
     def __init__(
         self,
         *,
@@ -87,20 +85,20 @@ class OpenAILLM(LLM):
         temperature: float,
         response_cache: LLMResponseCache | None = None,
     ) -> None:
-        self.api_key = api_key
-        self.model = model
-        self.price_calculator = price_calculator
-        self.token_budget = token_budget
-        self.temperature = temperature
-        self.client = self.get_client()
-        self.response_cache = response_cache
+        self._api_key = api_key
+        self._model = model
+        self._price_calculator = price_calculator
+        self._token_budget = token_budget
+        self._temperature = temperature
+        self._client = self.get_client()
+        self._response_cache = response_cache
 
     def get_client(self) -> OpenAI:
-        return OpenAI(api_key=self.api_key)  # type: ignore
+        return OpenAI(api_key=self._api_key)  # type: ignore
 
     @override
     def get_model(self) -> str:
-        return self.model
+        return self._model
 
     @override
     def count_tokens(self, *, text: str) -> int:
@@ -115,25 +113,8 @@ class OpenAILLM(LLM):
     ) -> str:
         encoding = tiktoken.encoding_for_model(model_name=self.get_model())
         return encoding.decode(
-            encoding.encode(text=text)[
-                : self.token_budget.max_tokens_for_context
-            ]
+            encoding.encode(text=text)[: self._token_budget.max_tokens_for_context]
         )
-
-    def convert_llm_input_message_to_raw_message(
-        self, message: LLMInputMessage
-    ) -> dict[str, Any]:
-        match message.role:
-            case LLMMessageRole.USER:
-                role = "user"
-            case LLMMessageRole.ASSISTANT:
-                role = "assistant"
-            case _:
-                raise NotImplementedError(
-                    f"{message.role} is not supported for OpenAI"
-                )
-
-        return {"role": role, "content": message.content}
 
     @override
     def complete_chat(
@@ -149,7 +130,7 @@ class OpenAILLM(LLM):
                 "content": system_message,
             },
             *[
-                self.convert_llm_input_message_to_raw_message(message=message)
+                self._convert_llm_input_message_to_raw_message(message=message)
                 for message in messages
             ],
         ]
@@ -160,20 +141,22 @@ class OpenAILLM(LLM):
 
         logger.debug(
             "Calling OpenAI LLM",
-            model=self.model,
-            temperature=self.temperature,
+            model=self._model,
+            temperature=self._temperature,
         )
 
-        md5_hash = md5()
-        md5_hash.update(self.model.encode("utf-8"))
-        md5_hash.update(str(self.temperature).encode("utf-8"))
-        md5_hash.update(json.dumps(llm_messages).encode("utf-8"))
-        md5_hash.update(json.dumps(extra_kwargs).encode("utf-8"))
-        cache_key_suffix = md5_hash.hexdigest()
-        cache_key = f"openai_response::{cache_key_suffix}"
+        cache_key = ""
 
-        if self.response_cache:
-            cached_response = self.response_cache.get(cache_key)
+        if self._response_cache:
+            md5_hash = md5()
+            md5_hash.update(self._model.encode("utf-8"))
+            md5_hash.update(str(self._temperature).encode("utf-8"))
+            md5_hash.update(json.dumps(llm_messages).encode("utf-8"))
+            md5_hash.update(json.dumps(extra_kwargs).encode("utf-8"))
+            cache_key_suffix = md5_hash.hexdigest()
+            cache_key = f"openai_response::{cache_key_suffix}"
+
+            cached_response = self._response_cache.get(cache_key)
             if cached_response:
                 logger.debug(
                     "Using cached response",
@@ -183,10 +166,10 @@ class OpenAILLM(LLM):
                 return cached_response
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            response = self._client.chat.completions.create(
+                model=self._model,
                 messages=llm_messages,  # type: ignore
-                temperature=self.temperature,
+                temperature=self._temperature,
                 **extra_kwargs,
             )
         except openai.RateLimitError as error:
@@ -219,7 +202,7 @@ class OpenAILLM(LLM):
                 answer=answer.message.content,
                 prompt_tokens_used=response.usage.prompt_tokens,
                 completion_tokens_used=response.usage.completion_tokens,
-                cost=self.price_calculator.calculate_price(
+                cost=self._price_calculator.calculate_price(
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens,
                 ),
@@ -227,14 +210,43 @@ class OpenAILLM(LLM):
             )
             logger.debug("LLM Returned Response", llm_response=llm_response)
 
-            if self.response_cache:
-                self.response_cache.set(cache_key, llm_response)
+            if self._response_cache:
+                assert cache_key != ""
+                self._response_cache.set(cache_key, llm_response)
 
             return llm_response
 
-        raise NotImplementedError(
-            "Something went wrong with OpenAI Completion"
-        )
+        raise NotImplementedError("Something went wrong with OpenAI Completion")
+
+    def _convert_llm_input_message_to_raw_message(
+        self, message: LLMInputMessage
+    ) -> dict[str, Any]:
+        match message.role:
+            case LLMMessageRole.USER:
+                role = "user"
+            case LLMMessageRole.ASSISTANT:
+                role = "assistant"
+            case _:
+                raise NotImplementedError(f"{message.role} is not supported for OpenAI")
+
+        if isinstance(message.content, str):
+            return {"role": role, "content": message.content}
+        elif isinstance(message.content, LLMInputImage):
+            image = message.content.image
+            return {
+                "role": role,
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image.base64_data,
+                        },
+                    },
+                    {"type": "text", "text": message.content.text},
+                ],
+            }
+
+        raise NotImplementedError(f"Unhandled message type: {message}")
 
 
 class AzureOpenAILLM(OpenAILLM):
@@ -264,7 +276,7 @@ class AzureOpenAILLM(OpenAILLM):
     @override
     def get_client(self) -> OpenAI:
         return AzureOpenAI(
-            api_key=self.api_key,
+            api_key=self._api_key,
             api_version=self.api_version,
             azure_endpoint=self.endpoint,
         )

@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, NamedTuple
+from typing import NamedTuple
+
+from llm_toolkit.models import LLMImageData
 
 
 class LLMOutputMode(StrEnum):
@@ -14,9 +16,14 @@ class LLMMessageRole(StrEnum):
     ASSISTANT = "ASSISTANT"
 
 
+class LLMInputImage(NamedTuple):
+    text: str
+    image: LLMImageData
+
+
 class LLMInputMessage(NamedTuple):
     role: LLMMessageRole
-    content: str | dict[str, Any] | list[dict[str, Any]]
+    content: str | LLMInputImage
 
 
 class LLM(ABC):
@@ -90,9 +97,7 @@ class LLMPriceCalculator(NamedTuple):
     def cost_per_output_token(self) -> Decimal:
         return self.output_tokens / max(1, self.tokens)
 
-    def calculate_price(
-        self, input_tokens: int, output_tokens: int
-    ) -> Decimal:
+    def calculate_price(self, input_tokens: int, output_tokens: int) -> Decimal:
         cost_of_input_tokens = self.cost_per_input_token() * input_tokens
         cost_of_output_tokens = self.cost_per_output_token() * output_tokens
         return cost_of_input_tokens + cost_of_output_tokens
