@@ -1,9 +1,13 @@
 from decimal import Decimal
-from typing import Any, Literal, Self, override
-from warnings import deprecated
+from typing import Literal, override
 
 import anthropic
-from anthropic.types import Message, MessageParam, ImageBlockParam, TextBlockParam
+from anthropic.types import (
+    ImageBlockParam,
+    Message,
+    MessageParam,
+    TextBlockParam,
+)
 from anthropic.types.image_block_param import Source
 
 from llm_toolkit.llm.errors import (
@@ -18,7 +22,6 @@ from llm_toolkit.llm.models import (
     LLM,
     LLMInputImage,
     LLMInputMessage,
-    LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
     LLMPriceCalculator,
@@ -71,7 +74,8 @@ class AnthropicLLM(LLM):
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
         llm_messages: list[MessageParam] = [
-            self.__llm_message_to_anthropic_message(message) for message in messages
+            self.__llm_message_to_anthropic_message(message)
+            for message in messages
         ]
 
         if output_mode == LLMOutputMode.JSON:
@@ -118,10 +122,14 @@ class AnthropicLLM(LLM):
                     input_tokens=assistant_message.usage.input_tokens,
                     output_tokens=assistant_message.usage.output_tokens,
                 ),
-                stop_reason=self._generate_stop_reason(message=assistant_message),
+                stop_reason=self._generate_stop_reason(
+                    message=assistant_message
+                ),
             )
 
-        raise NotImplementedError("Something went wrong with Anthropic Completion")
+        raise NotImplementedError(
+            "Something went wrong with Anthropic Completion"
+        )
 
     def __llm_message_to_anthropic_message(
         self,
@@ -139,25 +147,28 @@ class AnthropicLLM(LLM):
                 )
 
         if isinstance(message.content, str):
-            return MessageParam(role=role, content=message.content)
+            content = message.content
         elif isinstance(message.content, LLMInputImage):
             image = message.content.image
+            content = [
+                ImageBlockParam(  # type: ignore
+                    source=Source(  # type: ignore
+                        media_type=image.mime_type,
+                        data=image.base64_data,
+                    )
+                ),
+                TextBlockParam(  # type: ignore
+                    text=message.content.text,
+                ),
+            ]
             return MessageParam(
                 role=role,
-                content=[
-                    ImageBlockParam(  # type: ignore
-                        source=Source(  # type: ignore
-                            media_type=image.mime_type,
-                            data=image.base64_data,
-                        )
-                    ),
-                    TextBlockParam(  # type: ignore
-                        text=message.content.text,
-                    ),
-                ],
+                content=content,
             )
+        else:
+            raise NotImplementedError(f"Unhandled message type: {message}")
 
-        raise NotImplementedError(f"Unhandled message type: {message}")
+        return MessageParam(role=role, content=message.content)
 
     def _generate_stop_reason(self, *, message: Message) -> LLMStopReason:
         match message.stop_reason:
@@ -173,35 +184,6 @@ class AnthropicLLM(LLM):
                 raise NotImplementedError
 
         return stop_reason
-
-
-@deprecated("Use LLMInputImage instead")
-class AnthropicMessageBuilder(LLMMessageBuilderInterface):
-    def __init__(self) -> None:
-        self.content: list[dict[str, Any]] = []
-
-    @override
-    def add_base64_image(self, *, mime_type: str, content: str) -> Self:
-        self.content.append(
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": mime_type,
-                    "data": content,
-                },
-            }
-        )
-        return self
-
-    @override
-    def add_text(self, *, text: str) -> Self:
-        self.content.append({"type": "text", "text": text})
-        return self
-
-    @override
-    def build_message(self, role: LLMMessageRole) -> LLMInputMessage:
-        return LLMInputMessage(role=role, content=self.content)
 
 
 class Claude3HaikuLLM(AnthropicLLM):

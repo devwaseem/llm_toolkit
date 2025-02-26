@@ -8,7 +8,6 @@ from llm_toolkit.llm.models import (
     LLM,
     LLMInputImage,
     LLMInputMessage,
-    LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
     LLMResponse,
@@ -32,7 +31,6 @@ class LLMExtractedImageData(NamedTuple, Generic[T]):
 def extract_schema_data_from_image(
     *,
     llm: LLM,
-    llm_message_builder: LLMMessageBuilderInterface,
     system_message: str,
     image_file: Path,
     schema_generator: LLMSchemaGenerator[T],

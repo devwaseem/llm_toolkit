@@ -63,22 +63,6 @@ class LLM(ABC):
         raise NotImplementedError
 
 
-class LLMMessageBuilderInterface(ABC):
-    @abstractmethod
-    def add_base64_image(
-        self, *, mime_type: str, content: str
-    ) -> "LLMMessageBuilderInterface":
-        raise NotImplementedError
-
-    @abstractmethod
-    def add_text(self, *, text: str) -> "LLMMessageBuilderInterface":
-        raise NotImplementedError
-
-    @abstractmethod
-    def build_message(self, role: LLMMessageRole) -> LLMInputMessage:
-        raise NotImplementedError
-
-
 class LLMStopReason(StrEnum):
     MAX_TOKENS = "MAX_TOKENS"
     END_TURN = "END_TURN"

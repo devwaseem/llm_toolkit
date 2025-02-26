@@ -1,11 +1,10 @@
 import json
+import logging
 from decimal import Decimal
 from hashlib import md5
-from typing import Any, Self, override
-from warnings import deprecated
+from typing import Any, override
 
 import openai
-import structlog
 import tiktoken
 from openai import AzureOpenAI, OpenAI
 
@@ -23,7 +22,6 @@ from llm_toolkit.llm.models import (
     ImageDataExtractorLLM,
     LLMInputImage,
     LLMInputMessage,
-    LLMMessageBuilderInterface,
     LLMMessageRole,
     LLMOutputMode,
     LLMPriceCalculator,
@@ -32,39 +30,7 @@ from llm_toolkit.llm.models import (
     LLMTokenBudget,
 )
 
-logger = structlog.get_logger(__name__)
-
-
-@deprecated("Use LLMInputImage instead")
-class OpenAIMessageBuilder(LLMMessageBuilderInterface):
-    def __init__(self) -> None:
-        self.content: list[dict[str, Any]] = []
-
-    @override
-    def add_base64_image(
-        self,
-        *,
-        mime_type: str,
-        content: str,
-    ) -> Self:
-        self.content.append(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": content,
-                },
-            }
-        )
-        return self
-
-    @override
-    def add_text(self, *, text: str) -> Self:
-        self.content.append({"type": "text", "text": text})
-        return self
-
-    @override
-    def build_message(self, role: LLMMessageRole) -> LLMInputMessage:
-        return LLMInputMessage(role=role, content=self.content)
+logger = logging.getLogger(__name__)
 
 
 class OpenAILLM(LLM):
@@ -144,9 +110,7 @@ class OpenAILLM(LLM):
             extra_kwargs["response_format"] = {"type": "json_object"}
 
         logger.debug(
-            "Calling OpenAI LLM",
-            model=self._model,
-            temperature=self.temperature,
+            "Calling OpenAI LLM, model: %s, temperature: %s",
         )
 
         cache_key = ""
@@ -163,9 +127,12 @@ class OpenAILLM(LLM):
             cached_response = self._response_cache.get(cache_key)
             if cached_response:
                 logger.debug(
-                    "Using cached response",
-                    cache_key=cache_key,
-                    cached_response=cached_response,
+                    (
+                        "Using cached response, "
+                        "cache_key: %s, cached_response: %s"
+                    ),
+                    cache_key,
+                    str(cached_response),
                 )
                 return cached_response
 
@@ -212,7 +179,7 @@ class OpenAILLM(LLM):
                 ),
                 stop_reason=stop_reason,
             )
-            logger.debug("LLM Returned Response", llm_response=llm_response)
+            logger.debug("LLM Returned Response: %s", llm_response)
 
             if self._response_cache:
                 assert cache_key != ""
@@ -236,25 +203,29 @@ class OpenAILLM(LLM):
                 raise NotImplementedError(
                     f"{message.role} is not supported for OpenAI"
                 )
-
+        content = {}
         if isinstance(message.content, str):
-            return {"role": role, "content": message.content}
+            content = message.content
         elif isinstance(message.content, LLMInputImage):
             image = message.content.image
-            return {
-                "role": role,
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": image.base64_data,
-                        },
+            content = [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": (
+                            f"data:{image.mime_type};base64,{image.base64_data}"
+                        ),
                     },
-                    {"type": "text", "text": message.content.text},
-                ],
-            }
+                },
+                {"type": "text", "text": message.content.text},
+            ]
+        else:
+            raise NotImplementedError(f"Unhandled message type: {message}")
 
-        raise NotImplementedError(f"Unhandled message type: {message}")
+        return {
+            "role": role,
+            "content": content,
+        }
 
 
 class AzureOpenAILLM(OpenAILLM):
