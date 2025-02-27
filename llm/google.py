@@ -7,10 +7,17 @@ import logging
 from decimal import Decimal
 from typing import Any, override
 
+from google.genai.errors import ClientError, ServerError
 from google.genai.types import Candidate, FinishReason, GenerateContentConfig
 
 from llm_toolkit.cache.models import LLMResponseCache
-from llm_toolkit.llm.errors import LLMEmptyResponseError
+from llm_toolkit.llm.errors import (
+    LLMAuthenticationError,
+    LLMEmptyResponseError,
+    LLMInternalServerError,
+    LLMPermissionDeniedError,
+    LLMRateLimitedError,
+)
 from llm_toolkit.llm.models import (
     LLM,
     ImageDataExtractorLLM,
@@ -92,15 +99,30 @@ class GoogleLLM(LLM):
             case _:
                 response_mime_type = "text/plain"
 
-        response = self.get_client().models.generate_content(
-            model=self.model,
-            contents=llm_messages,  # type: ignore
-            config=GenerateContentConfig(
-                max_output_tokens=8192,
-                system_instruction=system_message,
-                response_mime_type=response_mime_type,
-            ),
-        )
+        try:
+            response = self.get_client().models.generate_content(
+                model=self.model,
+                contents=llm_messages,  # type: ignore
+                config=GenerateContentConfig(
+                    max_output_tokens=8192,
+                    system_instruction=system_message,
+                    response_mime_type=response_mime_type,
+                ),
+            )
+        except ClientError as exc:
+            if exc.status == 429:
+                raise LLMRateLimitedError from exc
+
+            if exc.status == 401:
+                raise LLMAuthenticationError from exc
+
+            if exc.status == 403:
+                raise LLMPermissionDeniedError from exc
+
+            raise exc from exc
+
+        except ServerError as exc:
+            raise LLMInternalServerError from exc
 
         if not response.candidates:
             raise LLMEmptyResponseError
@@ -161,27 +183,25 @@ class GoogleLLM(LLM):
                 )
 
         if isinstance(message.content, str):
-            return {
-                "role": role,
-                "parts": [{"text": message.content}],
-            }
-
+            parts = ([{"text": message.content}],)
         elif isinstance(message.content, LLMInputImage):
             image = message.content.image
-            return {
-                "role": role,
-                "parts": [
-                    {"text": message.content.text},
-                    {
-                        "inline_data": {
-                            "mime_type": image.mime_type,
-                            "data": image.base64_data,
-                        }
-                    },
-                ],
-            }
+            parts = [
+                {"text": message.content.text},
+                {
+                    "inline_data": {
+                        "mime_type": image.mime_type,
+                        "data": image.base64_data,
+                    }
+                },
+            ]
+        else:
+            raise NotImplementedError(f"Unhandled message type: {message}")
 
-        raise NotImplementedError(f"Unhandled message type: {message}")
+        return {
+            "role": role,
+            "parts": parts,
+        }
 
 
 class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
