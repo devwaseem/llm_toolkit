@@ -229,15 +229,13 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         elif isinstance(message.content, LLMInputImage):
             image = message.content.image
             content = [
+                {"type": "input_text", "text": message.content.text},
                 {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": (
-                            f"data:{image.mime_type};base64,{image.base64_data}"
-                        ),
-                    },
+                    "type": "input_image",
+                    "image_url": (
+                        f"data:{image.mime_type};base64,{image.base64_data}"
+                    ),
                 },
-                {"type": "text", "text": message.content.text},
             ]
         else:
             raise NotImplementedError(f"Unhandled message type: {message}")
