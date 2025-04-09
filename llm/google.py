@@ -1,11 +1,11 @@
 try:
     from google import genai
-except ImportError:
-    raise ImportError("Please install google-genai to use Google LLM")
+except ImportError as exc:
+    raise ImportError("Please install google-genai to use Google LLM") from exc
 
 import logging
 from decimal import Decimal
-from typing import Any, Type, override
+from typing import Any, Type, cast, override
 
 from google.genai import types
 from google.genai.errors import ClientError, ServerError
@@ -95,7 +95,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         messages: list[LLMInputMessage],
         schema: Type[PydanticModel],
         system_message: str = "",
-    ) -> (PydanticModel, LLMResponse):
+    ) -> tuple[PydanticModel, LLMResponse]:
         llm_messages = [
             self._convert_llm_input_message_to_raw_message(message=message)
             for message in messages
@@ -107,7 +107,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
             response_schema=schema,
         )
         return (
-            response.parsed,
+            cast(PydanticModel, response.parsed),
             self._to_llm_response(response=response),
         )
 
@@ -189,7 +189,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         system_message: str,
         contents: str | list[dict[str, Any]],
         response_mime_type: str,
-        response_schema: PydanticModel | None = None,
+        response_schema: Type[PydanticModel] | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> GenerateContentResponse:
         try:

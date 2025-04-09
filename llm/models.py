@@ -37,7 +37,7 @@ class LLMInputMessage(NamedTuple):
     content: str | LLMInputImage
 
 
-PydanticModel = TypeVar("Schema", bound=BaseModel)
+PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
 
 class LLM(ABC):
@@ -66,18 +66,6 @@ class LLM(ABC):
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
         tools: list[dict[str, Any]] | None = None,
     ) -> "LLMResponse":
-        raise NotImplementedError
-
-
-class StructuredOutputLLM:
-    @abstractmethod
-    def extract(
-        self,
-        *,
-        messages: list[LLMInputMessage],
-        schema: Type[PydanticModel],
-        system_message: str = "",
-    ) -> "(PydanticModel, LLMResponse)":
         raise NotImplementedError
 
 
@@ -146,6 +134,18 @@ class LLMTokenBudget:
         if not self._max_tokens_for_output:
             return self.llm_max_token - self.max_tokens_for_context
         return self._max_tokens_for_output
+
+
+class StructuredOutputLLM:
+    @abstractmethod
+    def extract(
+        self,
+        *,
+        messages: list[LLMInputMessage],
+        schema: Type[PydanticModel],
+        system_message: str = "",
+    ) -> tuple[PydanticModel, LLMResponse]:
+        raise NotImplementedError
 
 
 T = TypeVar("T", bound=LLMSchemaModel)

@@ -6,6 +6,7 @@ from typing import Any, Type, override
 import openai
 import tiktoken
 from openai import AzureOpenAI, OpenAI
+from openai.lib._pydantic import to_strict_json_schema
 from openai.types.responses.response import Response
 
 from llm_toolkit.cache.models import LLMResponseCache
@@ -33,8 +34,6 @@ from llm_toolkit.llm.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-from openai.lib._pydantic import to_strict_json_schema
 
 
 class OpenAILLM(LLM, StructuredOutputLLM):
@@ -97,7 +96,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         messages: list[LLMInputMessage],
         schema: Type[PydanticModel],
         system_message: str = "",
-    ) -> (PydanticModel, LLMResponse):
+    ) -> tuple[PydanticModel, LLMResponse]:
         response = self._call(
             system_message=system_message,
             messages=messages,
@@ -170,7 +169,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             response = self.get_client().responses.create(
                 model=self.get_model(),
                 input=llm_input,
-                text=text,
+                text=text,  # type: ignore
             )
         except openai.RateLimitError as error:
             raise LLMRateLimitedError from error
@@ -197,6 +196,8 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                     stop_reason = LLMStopReason.MAX_TOKENS
                 case _:
                     raise NotImplementedError
+
+        assert response.usage is not None, "Usage metadata is not available"
 
         return LLMResponse(
             llm_model=self.get_model(),
