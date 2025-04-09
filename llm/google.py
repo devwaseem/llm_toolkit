@@ -5,10 +5,16 @@ except ImportError:
 
 import logging
 from decimal import Decimal
-from typing import Any, override
+from typing import Any, Type, override
 
+from google.genai import types
 from google.genai.errors import ClientError, ServerError
-from google.genai.types import Candidate, FinishReason, GenerateContentConfig
+from google.genai.types import (
+    Candidate,
+    FinishReason,
+    GenerateContentConfig,
+    GenerateContentResponse,
+)
 
 from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import (
@@ -29,12 +35,14 @@ from llm_toolkit.llm.models import (
     LLMResponse,
     LLMStopReason,
     LLMTokenBudget,
+    PydanticModel,
+    StructuredOutputLLM,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class GoogleLLM(LLM):
+class GoogleLLM(LLM, StructuredOutputLLM):
     def __init__(
         self,
         api_key: str,
@@ -81,12 +89,36 @@ class GoogleLLM(LLM):
         return genai.Client(api_key=self.api_key)
 
     @override
+    def extract(
+        self,
+        *,
+        messages: list[LLMInputMessage],
+        schema: Type[PydanticModel],
+        system_message: str = "",
+    ) -> (PydanticModel, LLMResponse):
+        llm_messages = [
+            self._convert_llm_input_message_to_raw_message(message=message)
+            for message in messages
+        ]
+        response = self._call(
+            system_message=system_message,
+            contents=llm_messages,
+            response_mime_type="application/json",
+            response_schema=schema,
+        )
+        return (
+            response.parsed,
+            self._to_llm_response(response=response),
+        )
+
+    @override
     def complete_chat(
         self,
         *,
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         llm_messages = [
             self._convert_llm_input_message_to_raw_message(message=message)
@@ -99,14 +131,81 @@ class GoogleLLM(LLM):
             case _:
                 response_mime_type = "text/plain"
 
+        response = self._call(
+            system_message=system_message,
+            contents=llm_messages,
+            response_mime_type=response_mime_type,
+        )
+        return self._to_llm_response(response=response)
+
+    def _get_stop_reason(self, response_candidate: Candidate) -> LLMStopReason:
+        match response_candidate.finish_reason:
+            case FinishReason.STOP:
+                return LLMStopReason.END_TURN
+            case FinishReason.MAX_TOKENS:
+                return LLMStopReason.MAX_TOKENS
+            case _:
+                raise ValueError(
+                    "Unknown finish reason: "
+                    + str(response_candidate.finish_reason)
+                )
+
+    def _convert_llm_input_message_to_raw_message(
+        self, *, message: LLMInputMessage
+    ) -> dict[str, Any]:
+        match message.role:
+            case LLMMessageRole.USER:
+                role = "user"
+            case LLMMessageRole.ASSISTANT:
+                role = "model"
+            case _:
+                raise ValueError(
+                    f"{message.role} is not supported for Google AI"
+                )
+
+        if isinstance(message.content, str):
+            parts = [{"text": message.content}]
+        elif isinstance(message.content, LLMInputImage):
+            image = message.content.image
+            parts = [
+                {"text": message.content.text},
+                {
+                    "inline_data": {
+                        "mime_type": image.mime_type,
+                        "data": image.base64_data,
+                    }
+                },
+            ]
+        else:
+            raise NotImplementedError(f"Unhandled message type: {message}")
+
+        return {
+            "role": role,
+            "parts": parts,
+        }
+
+    def _call(
+        self,
+        system_message: str,
+        contents: str | list[dict[str, Any]],
+        response_mime_type: str,
+        response_schema: PydanticModel | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> GenerateContentResponse:
         try:
             response = self.get_client().models.generate_content(
                 model=self.model,
-                contents=llm_messages,  # type: ignore
+                contents=contents,  # type: ignore
                 config=GenerateContentConfig(
-                    max_output_tokens=8192,
-                    system_instruction=system_message,
+                    max_output_tokens=self.token_budget.max_tokens_for_output,
+                    system_instruction=system_message
+                    if system_message
+                    else None,
                     response_mime_type=response_mime_type,
+                    response_schema=response_schema,
+                    tools=types.Tool(function_declarations=tools)
+                    if tools
+                    else None,
                 ),
             )
         except ClientError as exc:
@@ -124,6 +223,11 @@ class GoogleLLM(LLM):
         except ServerError as exc:
             raise LLMInternalServerError from exc
 
+        return response
+
+    def _to_llm_response(
+        self, response: GenerateContentResponse
+    ) -> LLMResponse:
         if not response.candidates:
             raise LLMEmptyResponseError
 
@@ -156,52 +260,6 @@ class GoogleLLM(LLM):
             ),
             stop_reason=self._get_stop_reason(response_candidate=candidate),
         )
-
-    def _get_stop_reason(self, response_candidate: Candidate) -> LLMStopReason:
-        match response_candidate.finish_reason:
-            case FinishReason.STOP:
-                return LLMStopReason.END_TURN
-            case FinishReason.MAX_TOKENS:
-                return LLMStopReason.MAX_TOKENS
-            case _:
-                raise ValueError(
-                    "Unknown finish reason: "
-                    + str(response_candidate.finish_reason)
-                )
-
-    def _convert_llm_input_message_to_raw_message(
-        self, *, message: LLMInputMessage
-    ) -> dict[str, Any]:
-        match message.role:
-            case LLMMessageRole.USER:
-                role = "user"
-            case LLMMessageRole.ASSISTANT:
-                role = "model"
-            case _:
-                raise ValueError(
-                    f"{message.role} is not supported for Google AI"
-                )
-
-        if isinstance(message.content, str):
-            parts = ([{"text": message.content}],)
-        elif isinstance(message.content, LLMInputImage):
-            image = message.content.image
-            parts = [
-                {"text": message.content.text},
-                {
-                    "inline_data": {
-                        "mime_type": image.mime_type,
-                        "data": image.base64_data,
-                    }
-                },
-            ]
-        else:
-            raise NotImplementedError(f"Unhandled message type: {message}")
-
-        return {
-            "role": role,
-            "parts": parts,
-        }
 
 
 class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa

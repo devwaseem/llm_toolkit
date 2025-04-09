@@ -1,12 +1,12 @@
 import json
 import logging
 from decimal import Decimal
-from hashlib import md5
-from typing import Any, override
+from typing import Any, Type, override
 
 import openai
 import tiktoken
 from openai import AzureOpenAI, OpenAI
+from openai.types.responses.response import Response
 
 from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import (
@@ -28,12 +28,16 @@ from llm_toolkit.llm.models import (
     LLMResponse,
     LLMStopReason,
     LLMTokenBudget,
+    PydanticModel,
+    StructuredOutputLLM,
 )
 
 logger = logging.getLogger(__name__)
 
+from openai.lib._pydantic import to_strict_json_schema
 
-class OpenAILLM(LLM):
+
+class OpenAILLM(LLM, StructuredOutputLLM):
     _api_key: str
     _model: str
     _response_cache: LLMResponseCache | None
@@ -87,61 +91,86 @@ class OpenAILLM(LLM):
         )
 
     @override
+    def extract(
+        self,
+        *,
+        messages: list[LLMInputMessage],
+        schema: Type[PydanticModel],
+        system_message: str = "",
+    ) -> (PydanticModel, LLMResponse):
+        response = self._call(
+            system_message=system_message,
+            messages=messages,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": schema.__name__,
+                    "schema": to_strict_json_schema(schema),
+                    "strict": True,
+                }
+            },
+        )
+
+        return (
+            schema(**json.loads(response.output_text)),
+            self._to_llm_response(response=response),
+        )
+
+    @override
     def complete_chat(
         self,
         *,
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
-        llm_messages: list[dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": system_message,
-            },
-            *[
-                self._convert_llm_input_message_to_raw_message(message=message)
-                for message in messages
-            ],
-        ]
-
-        extra_kwargs = {}
+        output_type = "text"
         if output_mode == LLMOutputMode.JSON:
-            extra_kwargs["response_format"] = {"type": "json_object"}
+            output_type = "json_object"
+
+        response = self._call(
+            system_message=system_message,
+            messages=messages,
+            text={
+                "format": {
+                    "type": output_type,
+                }
+            },
+        )
+
+        return self._to_llm_response(response=response)
+
+    def _call(
+        self,
+        *,
+        system_message: str,
+        messages: list[LLMInputMessage],
+        text: dict[str, Any],
+    ) -> Response:
+        llm_input = []
+        if system_message:
+            llm_input.append(
+                {
+                    "role": "system",
+                    "content": system_message,
+                }
+            )
+
+        llm_input += [
+            self._convert_llm_input_message_to_raw_message(message=message)
+            for message in messages
+        ]
 
         logger.debug(
             "Calling OpenAI LLM, model: %s, temperature: %s",
         )
 
-        cache_key = ""
-
-        if self._response_cache:
-            md5_hash = md5()
-            md5_hash.update(self._model.encode("utf-8"))
-            md5_hash.update(str(self.temperature).encode("utf-8"))
-            md5_hash.update(json.dumps(llm_messages).encode("utf-8"))
-            md5_hash.update(json.dumps(extra_kwargs).encode("utf-8"))
-            cache_key_suffix = md5_hash.hexdigest()
-            cache_key = f"openai_response::{cache_key_suffix}"
-
-            cached_response = self._response_cache.get(cache_key)
-            if cached_response:
-                logger.debug(
-                    (
-                        "Using cached response, "
-                        "cache_key: %s, cached_response: %s"
-                    ),
-                    cache_key,
-                    str(cached_response),
-                )
-                return cached_response
-
         try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=llm_messages,  # type: ignore
-                temperature=self.temperature,
-                **extra_kwargs,
+            response = self.get_client().responses.create(
+                model=self.get_model(),
+                input=llm_input,
+                text=text,
             )
         except openai.RateLimitError as error:
             raise LLMRateLimitedError from error
@@ -156,39 +185,29 @@ class OpenAILLM(LLM):
         except openai.PermissionDeniedError as error:
             raise LLMPermissionDeniedError from error
 
-        if answer := response.choices[0]:
-            stop_reason: LLMStopReason
-            match answer.finish_reason:
-                case "stop":
-                    stop_reason = LLMStopReason.END_TURN
-                case "length":
+        logger.debug("LLM Returned Response: %s", response)
+
+        return response
+
+    def _to_llm_response(self, *, response: Response) -> LLMResponse:
+        stop_reason: LLMStopReason = LLMStopReason.END_TURN
+        if incomplete_details := response.incomplete_details:
+            match incomplete_details.reason:
+                case "max_output_tokens":
                     stop_reason = LLMStopReason.MAX_TOKENS
-                case "tool_calls":
-                    stop_reason = LLMStopReason.TOOL_USE
                 case _:
                     raise NotImplementedError
 
-            llm_response = LLMResponse(
-                llm_model=self.get_model(),
-                answer=answer.message.content,
-                prompt_tokens_used=response.usage.prompt_tokens,
-                completion_tokens_used=response.usage.completion_tokens,
-                cost=self.price_calculator.calculate_price(
-                    input_tokens=response.usage.prompt_tokens,
-                    output_tokens=response.usage.completion_tokens,
-                ),
-                stop_reason=stop_reason,
-            )
-            logger.debug("LLM Returned Response: %s", llm_response)
-
-            if self._response_cache:
-                assert cache_key != ""
-                self._response_cache.set(cache_key, llm_response)
-
-            return llm_response
-
-        raise NotImplementedError(
-            "Something went wrong with OpenAI Completion"
+        return LLMResponse(
+            llm_model=self.get_model(),
+            answer=response.output_text,
+            prompt_tokens_used=response.usage.input_tokens,
+            completion_tokens_used=response.usage.output_tokens,
+            cost=self.price_calculator.calculate_price(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+            ),
+            stop_reason=stop_reason,
         )
 
     def _convert_llm_input_message_to_raw_message(

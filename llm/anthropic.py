@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Literal, override
+from typing import Any, Literal, override
 
 import anthropic
 from anthropic.types import (
@@ -72,6 +72,7 @@ class AnthropicLLM(LLM):
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         llm_messages: list[MessageParam] = [
             self.__llm_message_to_anthropic_message(message)

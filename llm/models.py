@@ -4,7 +4,9 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Generic, NamedTuple, TypeVar, cast
+from typing import Any, Generic, NamedTuple, Type, TypeVar, cast
+
+from pydantic import BaseModel
 
 from llm_toolkit.models import LLMImageData
 from llm_toolkit.schema_generator.models import (
@@ -35,6 +37,9 @@ class LLMInputMessage(NamedTuple):
     content: str | LLMInputImage
 
 
+PydanticModel = TypeVar("Schema", bound=BaseModel)
+
+
 class LLM(ABC):
     @abstractmethod
     def get_model(self) -> str:
@@ -59,7 +64,20 @@ class LLM(ABC):
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        tools: list[dict[str, Any]] | None = None,
     ) -> "LLMResponse":
+        raise NotImplementedError
+
+
+class StructuredOutputLLM:
+    @abstractmethod
+    def extract(
+        self,
+        *,
+        messages: list[LLMInputMessage],
+        schema: Type[PydanticModel],
+        system_message: str = "",
+    ) -> "(PydanticModel, LLMResponse)":
         raise NotImplementedError
 
 
@@ -70,12 +88,18 @@ class LLMStopReason(StrEnum):
     STOP_SEQUENCE = "STOP_SEQUENCE"
 
 
+class LLMFunctionCall(NamedTuple):
+    name: str
+    arguments: dict[str, Any]
+
+
 class LLMResponse(NamedTuple):
     llm_model: str
     answer: str
     prompt_tokens_used: int
     completion_tokens_used: int
     cost: Decimal
+    function_call: LLMFunctionCall | None = None
     stop_reason: LLMStopReason = LLMStopReason.END_TURN
 
 
