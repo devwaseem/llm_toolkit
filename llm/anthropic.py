@@ -1,7 +1,14 @@
+try:
+    import anthropic
+except ImportError as exc:
+    raise RuntimeError(
+        "Anthropic is not installed: install it using `anthropic` package"
+    ) from exc
+
+
 from decimal import Decimal
 from typing import Any, Literal, override
 
-import anthropic
 from anthropic.types import (
     ImageBlockParam,
     Message,

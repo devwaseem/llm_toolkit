@@ -203,7 +203,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                     else None,
                     response_mime_type=response_mime_type,
                     response_schema=response_schema,
-                    tools=types.Tool(function_declarations=tools)
+                    tools=types.Tool(function_declarations=tools)  # type: ignore
                     if tools
                     else None,
                 ),
