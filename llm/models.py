@@ -1,10 +1,9 @@
 import json
 import logging
-from abc import ABC, abstractmethod
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Generic, NamedTuple, Type, TypeVar, cast
+from typing import Any, Generic, NamedTuple, Protocol, Type, TypeVar, cast
 
 from pydantic import BaseModel
 
@@ -35,38 +34,6 @@ class LLMInputImage(NamedTuple):
 class LLMInputMessage(NamedTuple):
     role: LLMMessageRole
     content: str | LLMInputImage
-
-
-PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
-
-
-class LLM(ABC):
-    @abstractmethod
-    def get_model(self) -> str:
-        raise NotImplementedError
-
-    @abstractmethod
-    def count_tokens(self, *, text: str) -> int:
-        raise NotImplementedError
-
-    @abstractmethod
-    def truncate_text_to_max_tokens(
-        self,
-        *,
-        text: str,
-    ) -> str:
-        raise NotImplementedError
-
-    @abstractmethod
-    def complete_chat(
-        self,
-        *,
-        messages: list[LLMInputMessage],
-        system_message: str = "",
-        output_mode: LLMOutputMode = LLMOutputMode.TEXT,
-        tools: list[dict[str, Any]] | None = None,
-    ) -> "LLMResponse":
-        raise NotImplementedError
 
 
 class LLMStopReason(StrEnum):
@@ -136,8 +103,35 @@ class LLMTokenBudget:
         return self._max_tokens_for_output
 
 
-class StructuredOutputLLM:
-    @abstractmethod
+class LLM(Protocol):
+    def get_model(self) -> str:
+        raise NotImplementedError
+
+    def count_tokens(self, *, text: str) -> int:
+        raise NotImplementedError
+
+    def truncate_text_to_max_tokens(
+        self,
+        *,
+        text: str,
+    ) -> str:
+        raise NotImplementedError
+
+    def complete_chat(
+        self,
+        *,
+        messages: list[LLMInputMessage],
+        system_message: str = "",
+        output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> LLMResponse:
+        raise NotImplementedError
+
+
+PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
+
+
+class StructuredOutputLLM(Protocol):
     def extract(
         self,
         *,
