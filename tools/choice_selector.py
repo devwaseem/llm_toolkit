@@ -1,6 +1,7 @@
 import json
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Protocol
 
+from pydantic import BaseModel
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -20,7 +21,7 @@ from llm_toolkit.llm.models import (
     LLM,
     LLMInputMessage,
     LLMMessageRole,
-    LLMOutputMode,
+    StructuredOutputLLM,
 )
 
 
@@ -53,6 +54,14 @@ Output:
 """  # noqa
 
 
+class LLMSelectedChoice(BaseModel):
+    id: str | None
+
+
+class _StructuredOutputSupportedLLM(LLM, StructuredOutputLLM, Protocol):
+    ...
+
+
 @retry(
     retry=retry_if_exception_type(LLMJsonResponseDecodingError),
     reraise=True,
@@ -72,7 +81,9 @@ Output:
     stop=stop_after_delay(300),
 )
 def llm_pick_choice(
-    llm: LLM, question: str, choices: list[LLMChoice]
+    llm: _StructuredOutputSupportedLLM,
+    question: str,
+    choices: list[LLMChoice],
 ) -> LLMChoice | None:
     choices_by_id_dict: dict[str, LLMChoice] = {
         choice.choice_id: choice for choice in choices
@@ -83,25 +94,16 @@ def llm_pick_choice(
             for choice_id, choice in choices_by_id_dict.items()
         ]
     )
-    llm_response = llm.complete_chat(
-        system_message=_SYSTEM_MESSAGE,
+    selected_choice, llm_response = llm.extract(
         messages=[
             LLMInputMessage(
                 role=LLMMessageRole.USER,
                 content=(f"Question: {question}" f"choices: {options_json}"),
             )
         ],
-        output_mode=LLMOutputMode.JSON,
+        schema=LLMSelectedChoice,
     )
-    if not llm_response.answer:
+    if selected_choice.id is None:
         return None
 
-    try:
-        result_dict = json.loads(llm_response.answer)
-        if choice_id := result_dict.get("id"):
-            return choices_by_id_dict.get(choice_id)
-
-    except json.JSONDecodeError as exc:
-        raise LLMJsonResponseDecodingError from exc
-
-    return None
+    return choices_by_id_dict.get(selected_choice.id)
