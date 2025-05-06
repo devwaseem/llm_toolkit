@@ -122,7 +122,6 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
-        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         output_type = "text"
         if output_mode == LLMOutputMode.JSON:

@@ -107,23 +107,12 @@ class LLM(Protocol):
     def get_model(self) -> str:
         raise NotImplementedError
 
-    def count_tokens(self, *, text: str) -> int:
-        raise NotImplementedError
-
-    def truncate_text_to_max_tokens(
-        self,
-        *,
-        text: str,
-    ) -> str:
-        raise NotImplementedError
-
     def complete_chat(
         self,
         *,
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
-        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         raise NotImplementedError
 

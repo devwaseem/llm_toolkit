@@ -7,7 +7,7 @@ except ImportError as exc:
 
 
 from decimal import Decimal
-from typing import Any, Literal, override
+from typing import Literal, override
 
 from anthropic.types import (
     ImageBlockParam,
@@ -79,7 +79,6 @@ class AnthropicLLM(LLM):
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
-        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         llm_messages: list[MessageParam] = [
             self.__llm_message_to_anthropic_message(message)
