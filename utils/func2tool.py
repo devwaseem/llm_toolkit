@@ -4,7 +4,7 @@ from typing import Any, Callable, Type, get_type_hints
 import docstring_parser
 
 
-def func2tool(func: Callable[..., ...]) -> dict[str, Any]:
+def func2tool(func: Callable[..., Any]) -> dict[str, Any]:
     signature = inspect.signature(func)
     type_hints = get_type_hints(func)
     docstring = inspect.getdoc(func) or ""
@@ -23,15 +23,15 @@ def func2tool(func: Callable[..., ...]) -> dict[str, Any]:
         param_type: Type[Any] = type_hints.get(name, str)
         json_type = "string"  # default fallback
 
-        if param_type is int:  # type: ignore
+        if param_type is int:
             json_type = "integer"
-        elif param_type is float:  # type: ignore
+        elif param_type is float:
             json_type = "number"
-        elif param_type is bool:  # type: ignore
+        elif param_type is bool:
             json_type = "boolean"
-        elif param_type is list:  # type: ignore
+        elif param_type is list:
             json_type = "array"
-        elif param_type is dict:  # type: ignore
+        elif param_type is dict:
             json_type = "object"
 
         parameters["properties"][name] = {
