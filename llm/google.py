@@ -75,18 +75,6 @@ class GoogleLLM(LLM, StructuredOutputLLM):
     def get_model(self) -> str:
         return self.model
 
-    @override
-    def count_tokens(self, *, text: str) -> int:
-        raise NotImplementedError
-
-    @override
-    def truncate_text_to_max_tokens(
-        self,
-        *,
-        text: str,
-    ) -> str:
-        raise NotImplementedError
-
     def get_client(self) -> genai.Client:
         return genai.Client(api_key=self.api_key)
 

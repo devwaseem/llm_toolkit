@@ -4,7 +4,6 @@ from decimal import Decimal
 from typing import Any, Type, override
 
 import openai
-import tiktoken
 from openai import AzureOpenAI, OpenAI
 from openai.lib._pydantic import to_strict_json_schema
 from openai.types.responses.response import Response
@@ -70,24 +69,6 @@ class OpenAILLM(LLM, StructuredOutputLLM):
     @override
     def get_model(self) -> str:
         return self._model
-
-    @override
-    def count_tokens(self, *, text: str) -> int:
-        encoding = tiktoken.encoding_for_model(model_name=self.get_model())
-        return len(encoding.encode(text=text))
-
-    @override
-    def truncate_text_to_max_tokens(
-        self,
-        *,
-        text: str,
-    ) -> str:
-        encoding = tiktoken.encoding_for_model(model_name=self.get_model())
-        return encoding.decode(
-            encoding.encode(text=text)[
-                : self.token_budget.max_tokens_for_context
-            ]
-        )
 
     @override
     def extract(

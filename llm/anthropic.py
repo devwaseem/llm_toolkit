@@ -61,18 +61,6 @@ class AnthropicLLM(LLM):
         return self.model
 
     @override
-    def count_tokens(self, *, text: str) -> int:
-        raise NotImplementedError
-
-    @override
-    def truncate_text_to_max_tokens(
-        self,
-        *,
-        text: str,
-    ) -> str:
-        raise NotImplementedError
-
-    @override
     def complete_chat(
         self,
         *,
