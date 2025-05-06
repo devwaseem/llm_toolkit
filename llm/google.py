@@ -15,6 +15,7 @@ from google.genai.types import (
     GenerateContentResponse,
     GoogleSearch,
     Tool,
+    ToolListUnion,
 )
 
 from llm_toolkit.cache.models import LLMResponseCache
@@ -230,8 +231,12 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 system_instruction=system_message if system_message else None,
                 response_mime_type=response_mime_type,
                 response_schema=response_schema,
+                tools=self.get_tools(),
             ),
         )
+
+    def get_tools(self) -> ToolListUnion | None:
+        return None
 
     def _to_llm_response(
         self, response: GenerateContentResponse
@@ -270,29 +275,6 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         )
 
 
-class GoogleLLMWithGroundingSearch(GoogleLLM):
-    def _call_llm(
-        self,
-        system_message: str,
-        contents: str | list[dict[str, Any]],
-        response_mime_type: str,
-        response_schema: type[PydanticModel] | None = None,
-    ) -> GenerateContentResponse:
-        return self.get_client().models.generate_content(
-            model=self.model,
-            contents=contents,  # type: ignore
-            config=GenerateContentConfig(
-                max_output_tokens=self.token_budget.max_tokens_for_output,
-                system_instruction=system_message if system_message else None,
-                response_mime_type=response_mime_type,
-                response_schema=response_schema,
-                tools=[
-                    Tool(google_search=GoogleSearch()),
-                ],
-            ),
-        )
-
-
 class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
     def __init__(self, api_key: str, temperature: float) -> None:
         super().__init__(
@@ -308,16 +290,9 @@ class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
 
 
 class Gemini2_0_FlashWithGroundingSearch(  # noqa
-    GoogleLLMWithGroundingSearch, ImageDataExtractorLLM
+    Gemini2_0_Flash
 ):
-    def __init__(self, api_key: str, temperature: float) -> None:
-        super().__init__(
-            api_key=api_key,
-            model="gemini-2.0-flash",
-            price_calculator=LLMPriceCalculator(
-                tokens=1_000_000,
-                input_tokens=Decimal(0.10),
-                output_tokens=Decimal(0.40),
-            ),
-            temperature=temperature,
-        )
+    def get_tools(self) -> ToolListUnion | None:
+        return [
+            Tool(google_search=GoogleSearch()),
+        ]
