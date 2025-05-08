@@ -152,6 +152,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                     f"{message.role} is not supported for Google AI"
                 )
 
+        parts: list[dict[str, Any]]
         if isinstance(message.content, str):
             parts = [{"text": message.content}]
         elif isinstance(message.content, LLMInputImage):
@@ -188,13 +189,13 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 response_schema=response_schema,
             )
         except ClientError as exc:
-            if exc.status == 429:
+            if exc.status == "429":
                 raise LLMRateLimitedError from exc
 
-            if exc.status == 401:
+            if exc.status == "401":
                 raise LLMAuthenticationError from exc
 
-            if exc.status == 403:
+            if exc.status == "403":
                 raise LLMPermissionDeniedError from exc
 
             raise exc from exc
