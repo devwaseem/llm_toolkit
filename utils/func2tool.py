@@ -1,7 +1,12 @@
 import inspect
 from typing import Any, Callable, Type, get_type_hints
 
-import docstring_parser
+try:
+    import docstring_parser
+except ImportError as exc:
+    raise ImportError(
+        "Please install docstring_parser to use func2tool"
+    ) from exc
 
 
 def func2tool(func: Callable[..., Any]) -> dict[str, Any]:
