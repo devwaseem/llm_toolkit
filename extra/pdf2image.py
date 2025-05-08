@@ -22,10 +22,11 @@ def extract_images_from_pdf(
     out_dir: str,
     page_prefix: str = "page",
     grayscale: bool = False,
+    dpi: int = 150,
 ) -> Generator[Path, None, None]:
     doc = pymupdf.open(file_path)
     for page in doc:
-        pix = page.get_pixmap(dpi=150)  # type: ignore
+        pix = page.get_pixmap(dpi=dpi)  # pyright: ignore
         page_number = page.number
         image_path = Path(out_dir) / f"{page_prefix}_{page_number}.jpeg"
         pix.save(image_path)
