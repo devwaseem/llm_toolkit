@@ -50,6 +50,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         api_key: str,
         model: str,
         price_calculator: LLMPriceCalculator,
+        token_budget: LLMTokenBudget,
         temperature: float,
         response_cache: LLMResponseCache | None = None,
     ) -> None:
@@ -60,16 +61,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         self.temperature = temperature
         self.response_cache = response_cache
         self.client = self.get_client()
-
-        model_info = self.get_client().models.get(model=model)
-        self.token_budget = LLMTokenBudget(
-            llm_max_token=(
-                (model_info.input_token_limit or 0)
-                + (model_info.output_token_limit or 0)
-            ),
-            max_tokens_for_input=model_info.input_token_limit or 0,
-            max_tokens_for_output=model_info.output_token_limit or 0,
-        )
+        self.token_budget = token_budget
 
     @override
     def get_model(self) -> str:
@@ -275,6 +267,11 @@ class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
                 output_tokens=Decimal(0.40),
             ),
             temperature=temperature,
+            token_budget=LLMTokenBudget(
+                llm_max_token=1_000_000,
+                max_tokens_for_input=900_000,
+                max_tokens_for_output=400_000,
+            ),
         )
 
 
