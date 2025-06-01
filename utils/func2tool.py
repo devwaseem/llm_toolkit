@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, Type, get_type_hints
+from typing import Any, Callable, Set, Type, get_type_hints
 
 try:
     import docstring_parser
@@ -9,7 +9,12 @@ except ImportError as exc:
     ) from exc
 
 
-def func2tool(func: Callable[..., Any]) -> dict[str, Any]:
+def func2tool(
+    func: Callable[..., Any],
+    ignore_params: Set[str] | None = None,
+) -> dict[str, Any]:
+    ignore_params = ignore_params or set()
+
     signature = inspect.signature(func)
     type_hints = get_type_hints(func)
     docstring = inspect.getdoc(func) or ""
@@ -25,6 +30,9 @@ def func2tool(func: Callable[..., Any]) -> dict[str, Any]:
     }
 
     for name, param in signature.parameters.items():
+        if name in ignore_params:
+            continue
+
         param_type: Type[Any] = type_hints.get(name, str)
         json_type = "string"  # default fallback
 
