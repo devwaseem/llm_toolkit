@@ -181,19 +181,33 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 response_schema=response_schema,
             )
         except ClientError as exc:
-            if exc.status == "429":
-                raise LLMRateLimitedError from exc
+            logger.exception(
+                "%s: Client Error calling LLM, code: %d, status: %s",
+                self.get_model(),
+                exc.code,
+                exc.status,
+                exc_info=exc,
+                stack_info=False,
+            )
+            if exc.code == 429:
+                raise LLMRateLimitedError(exc) from exc
 
-            if exc.status == "401":
-                raise LLMAuthenticationError from exc
+            if exc.code == 401:
+                raise LLMAuthenticationError(exc) from exc
 
-            if exc.status == "403":
-                raise LLMPermissionDeniedError from exc
+            if exc.code == 403:
+                raise LLMPermissionDeniedError(exc) from exc
 
             raise exc from exc
 
         except ServerError as exc:
-            raise LLMInternalServerError from exc
+            logger.exception(
+                "%s: Server Error calling LLM",
+                self.get_model(),
+                exc_info=exc,
+                stack_info=False,
+            )
+            raise LLMInternalServerError(exc) from exc
 
         return response
 
