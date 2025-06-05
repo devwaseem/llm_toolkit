@@ -190,13 +190,13 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 stack_info=False,
             )
             if exc.code == 429:
-                raise LLMRateLimitedError(exc) from exc
+                raise LLMRateLimitedError from exc
 
             if exc.code == 401:
-                raise LLMAuthenticationError(exc) from exc
+                raise LLMAuthenticationError from exc
 
             if exc.code == 403:
-                raise LLMPermissionDeniedError(exc) from exc
+                raise LLMPermissionDeniedError from exc
 
             raise exc from exc
 
@@ -207,7 +207,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 exc_info=exc,
                 stack_info=False,
             )
-            raise LLMInternalServerError(exc) from exc
+            raise LLMInternalServerError from exc
 
         return response
 
