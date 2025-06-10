@@ -51,14 +51,12 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         model: str,
         price_calculator: LLMPriceCalculator,
         token_budget: LLMTokenBudget,
-        temperature: float,
         response_cache: LLMResponseCache | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
 
         self.price_calculator = price_calculator
-        self.temperature = temperature
         self.response_cache = response_cache
         self.client = self.get_client()
         self.token_budget = token_budget
@@ -77,6 +75,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         messages: list[LLMInputMessage],
         schema: Type[PydanticModel],
         system_message: str = "",
+        temperature: float = 0,
     ) -> tuple[PydanticModel, LLMResponse]:
         llm_messages = [
             self._convert_llm_input_message_to_raw_message(message=message)
@@ -84,6 +83,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         ]
         response = self._call(
             system_message=system_message,
+            temperature=temperature,
             contents=llm_messages,
             response_mime_type="application/json",
             response_schema=schema,
@@ -100,6 +100,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        temperature: float = 0,
     ) -> LLMResponse:
         llm_messages = [
             self._convert_llm_input_message_to_raw_message(message=message)
@@ -114,6 +115,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
         response = self._call(
             system_message=system_message,
+            temperature=temperature,
             contents=llm_messages,
             response_mime_type=response_mime_type,
         )
@@ -169,6 +171,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
     def _call(
         self,
         system_message: str,
+        temperature: float,
         contents: str | list[dict[str, Any]],
         response_mime_type: str,
         response_schema: Type[PydanticModel] | None = None,
@@ -176,6 +179,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         try:
             response = self._call_llm(
                 system_message=system_message,
+                temperature=temperature,
                 contents=contents,
                 response_mime_type=response_mime_type,
                 response_schema=response_schema,
@@ -214,6 +218,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
     def _call_llm(
         self,
         system_message: str,
+        temperature: float,
         contents: str | list[dict[str, Any]],
         response_mime_type: str,
         response_schema: Type[PydanticModel] | None = None,
@@ -226,6 +231,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 system_instruction=system_message if system_message else None,
                 response_mime_type=response_mime_type,
                 response_schema=response_schema,
+                temperature=temperature,
                 tools=self.get_tools(),
             ),
         )
@@ -271,7 +277,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
 
 class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
-    def __init__(self, api_key: str, temperature: float) -> None:
+    def __init__(self, api_key: str) -> None:
         super().__init__(
             api_key=api_key,
             model="gemini-2.0-flash",
@@ -280,7 +286,6 @@ class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
                 input_tokens=Decimal(0.10),
                 output_tokens=Decimal(0.40),
             ),
-            temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=1_000_000,
                 max_tokens_for_input=900_000,

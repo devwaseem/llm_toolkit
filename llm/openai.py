@@ -43,7 +43,6 @@ class OpenAILLM(LLM, StructuredOutputLLM):
 
     token_budget: LLMTokenBudget
     price_calculator: LLMPriceCalculator
-    temperature: float
 
     def __init__(
         self,
@@ -52,14 +51,12 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         model: str,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
-        temperature: float,
         response_cache: LLMResponseCache | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self.price_calculator = price_calculator
         self.token_budget = token_budget
-        self.temperature = temperature
         self._client = self.get_client()
         self._response_cache = response_cache
 
@@ -77,9 +74,11 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         messages: list[LLMInputMessage],
         schema: Type[PydanticModel],
         system_message: str = "",
+        temperature: float = 0,
     ) -> tuple[PydanticModel, LLMResponse]:
         response = self._call(
             system_message=system_message,
+            temperature=temperature,
             messages=messages,
             text={
                 "format": {
@@ -103,6 +102,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        temperature: float = 0,
     ) -> LLMResponse:
         output_type = "text"
         if output_mode == LLMOutputMode.JSON:
@@ -110,6 +110,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
 
         response = self._call(
             system_message=system_message,
+            temperature=temperature,
             messages=messages,
             text={
                 "format": {
@@ -124,6 +125,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         self,
         *,
         system_message: str,
+        temperature: float,
         messages: list[LLMInputMessage],
         text: dict[str, Any],
     ) -> Response:
@@ -148,6 +150,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         try:
             response = self.get_client().responses.create(
                 model=self.get_model(),
+                temperature=temperature,
                 input=llm_input,
                 text=text,  # type: ignore
             )
@@ -236,7 +239,6 @@ class AzureOpenAILLM(OpenAILLM):
         deployment_name: str,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
-        temperature: float,
         response_cache: LLMResponseCache | None = None,
     ) -> None:
         self.api_version = api_version
@@ -247,7 +249,6 @@ class AzureOpenAILLM(OpenAILLM):
             model=deployment_name,
             token_budget=token_budget,
             price_calculator=price_calculator,
-            temperature=temperature,
         )
 
     @override
@@ -263,14 +264,12 @@ class GPT35TurboLLM(OpenAILLM):
     def __init__(
         self,
         api_key: str,
-        temperature: float,
         response_cache: LLMResponseCache | None = None,
     ) -> None:
         super().__init__(
             response_cache=response_cache,
             api_key=api_key,
             model="gpt-3.5-turbo",
-            temperature=temperature,
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
                 input_tokens=Decimal(0.50),
@@ -288,7 +287,6 @@ class GPT4oLLM(OpenAILLM, ImageDataExtractorLLM):
     def __init__(
         self,
         api_key: str,
-        temperature: float,
         model_suffix: str = "",
         response_cache: LLMResponseCache | None = None,
     ) -> None:
@@ -296,7 +294,6 @@ class GPT4oLLM(OpenAILLM, ImageDataExtractorLLM):
             response_cache=response_cache,
             model="gpt-4o" + model_suffix,
             api_key=api_key,
-            temperature=temperature,
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
                 input_tokens=Decimal(5.0),

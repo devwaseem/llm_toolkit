@@ -1,17 +1,11 @@
-import json
 import logging
 from decimal import Decimal
 from enum import StrEnum
-from pathlib import Path
-from typing import Any, Generic, NamedTuple, Protocol, Type, TypeVar, cast
+from typing import Any, NamedTuple, Protocol, Type, TypeVar
 
 from pydantic import BaseModel
 
 from llm_toolkit.models import LLMImageData
-from llm_toolkit.schema_generator.models import (
-    LLMSchemaGenerator,
-    LLMSchemaModel,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +106,7 @@ class LLM(Protocol):
         *,
         messages: list[LLMInputMessage],
         system_message: str = "",
+        temperature: float = 0,
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
     ) -> LLMResponse:
         raise NotImplementedError
@@ -127,71 +122,6 @@ class StructuredOutputLLM(Protocol):
         messages: list[LLMInputMessage],
         schema: Type[PydanticModel],
         system_message: str = "",
+        temperature: float = 0,
     ) -> tuple[PydanticModel, LLMResponse]:
         raise NotImplementedError
-
-
-T = TypeVar("T", bound=LLMSchemaModel)
-
-
-class LLMExtractedImageData(NamedTuple, Generic[T]):
-    schema: T
-    llm_response: LLMResponse
-
-
-class ImageDataExtractorLLM(LLM):
-    def extract_image_data(
-        self,
-        *,
-        system_message: str,
-        image_file: Path,
-        schema_generator: LLMSchemaGenerator[T],
-        pre_image_llm_messages: list[LLMInputMessage] | None = None,
-        post_image_llm_messages: list[LLMInputMessage] | None = None,
-    ) -> LLMExtractedImageData[T]:
-        schema_dict = schema_generator.build_schema()
-
-        llm_messages = pre_image_llm_messages or []
-
-        llm_messages.append(
-            LLMInputMessage(
-                role=LLMMessageRole.USER,
-                content=LLMInputImage(
-                    image=LLMImageData(
-                        image_path=str(image_file),
-                    ),
-                    text=json.dumps(schema_dict),
-                ),
-            )
-        )
-
-        if post_image_llm_messages:
-            llm_messages.extend(post_image_llm_messages)
-
-        llm_response = self.complete_chat(
-            system_message=(system_message + schema_generator.get_example()),
-            messages=llm_messages,
-            output_mode=LLMOutputMode.JSON,
-        )
-
-        try:
-            json_data = cast(
-                dict[str, Any], json.loads(str(llm_response.answer))
-            )
-        except json.JSONDecodeError as exc:
-            logger.exception(
-                "Invalid JSON returned by LLM: %s",
-                llm_response.answer,
-            )
-            raise exc from exc
-
-        return LLMExtractedImageData(
-            schema=schema_generator.schema(
-                data=(
-                    schema_generator.decode_json(data=json_data)
-                    if schema_generator.encoded
-                    else json_data
-                )
-            ),
-            llm_response=llm_response,
-        )

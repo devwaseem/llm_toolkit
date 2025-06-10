@@ -44,7 +44,6 @@ class AnthropicLLM(LLM):
         *,
         api_key: str,
         model: str,
-        temperature: float,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
     ) -> None:
@@ -52,7 +51,6 @@ class AnthropicLLM(LLM):
             api_key=api_key,
         )
         self.model = model
-        self.temperature = temperature
         self.token_budget = token_budget
         self.price_calculator = price_calculator
 
@@ -67,6 +65,7 @@ class AnthropicLLM(LLM):
         messages: list[LLMInputMessage],
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
+        temperature: float = 0,
     ) -> LLMResponse:
         llm_messages: list[MessageParam] = [
             self.__llm_message_to_anthropic_message(message)
@@ -86,7 +85,7 @@ class AnthropicLLM(LLM):
             assistant_message = self.client.messages.create(
                 model=self.model,
                 max_tokens=self.token_budget.max_tokens_for_output,
-                temperature=self.temperature,
+                temperature=temperature,
                 system=system_message,
                 messages=llm_messages,
             )
@@ -210,12 +209,10 @@ class Claude3SonnetLLM(AnthropicLLM):
         self,
         *,
         api_key: str,
-        temperature: float = 1,
     ) -> None:
         super().__init__(
             api_key=api_key,
             model="claude-3-sonnet-20240229",
-            temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
@@ -234,12 +231,10 @@ class Claude3OpusLLM(AnthropicLLM):
         self,
         *,
         api_key: str,
-        temperature: float = 1,
     ) -> None:
         super().__init__(
             api_key=api_key,
             model="claude-3-opus-20240229",
-            temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
@@ -258,12 +253,10 @@ class Claude3P5SonnetLLM(AnthropicLLM):
         self,
         *,
         api_key: str,
-        temperature: float = 1,
     ) -> None:
         super().__init__(
             api_key=api_key,
             model="claude-3-5-sonnet-20240620",
-            temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
