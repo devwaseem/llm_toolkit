@@ -19,7 +19,6 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
-    ImageDataExtractorLLM,
     LLMInputImage,
     LLMInputMessage,
     LLMMessageRole,
@@ -283,7 +282,7 @@ class GPT35TurboLLM(OpenAILLM):
         )
 
 
-class GPT4oLLM(OpenAILLM, ImageDataExtractorLLM):
+class GPT4oLLM(OpenAILLM):
     def __init__(
         self,
         api_key: str,

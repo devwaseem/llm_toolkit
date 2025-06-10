@@ -28,7 +28,6 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
-    ImageDataExtractorLLM,
     LLMInputImage,
     LLMInputMessage,
     LLMMessageRole,
@@ -276,7 +275,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         )
 
 
-class Gemini2_0_Flash(GoogleLLM, ImageDataExtractorLLM):  # noqa
+class Gemini2_0_Flash(GoogleLLM):  # noqa
     def __init__(self, api_key: str) -> None:
         super().__init__(
             api_key=api_key,
