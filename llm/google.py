@@ -3,6 +3,7 @@ try:
 except ImportError as exc:
     raise ImportError("Please install google-genai to use Google LLM") from exc
 
+import json
 import logging
 from decimal import Decimal
 from typing import Any, Type, cast, override
@@ -23,6 +24,7 @@ from llm_toolkit.llm.errors import (
     LLMAuthenticationError,
     LLMEmptyResponseError,
     LLMInternalServerError,
+    LLMJsonResponseDecodingError,
     LLMPermissionDeniedError,
     LLMRateLimitedError,
 )
@@ -88,11 +90,24 @@ class GoogleLLM(LLM, StructuredOutputLLM):
             response_schema=schema,
         )
 
+        response_json = {}
+        try:
+            response_json = json.loads(response.text)
+        except json.JSONDecodeError as exc:
+            logger.exception(
+                "%s: Failed to decode JSON response: %s",
+                self.get_model(),
+                response.text,
+                exc_info=exc,
+                stack_info=False,
+            )
+            raise LLMJsonResponseDecodingError from exc
+
         if response.parsed is None:
             raise LLMEmptyResponseError
 
         return (
-            cast(PydanticModel, response.parsed),
+            cast(PydanticModel, schema(**response_json)),
             self._to_llm_response(response=response),
         )
 
