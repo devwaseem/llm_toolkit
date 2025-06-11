@@ -87,6 +87,10 @@ class GoogleLLM(LLM, StructuredOutputLLM):
             response_mime_type="application/json",
             response_schema=schema,
         )
+
+        if response.parsed is None:
+            raise LLMEmptyResponseError
+
         return (
             cast(PydanticModel, response.parsed),
             self._to_llm_response(response=response),
