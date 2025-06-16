@@ -130,12 +130,10 @@ class OpenAILLM(LLM, StructuredOutputLLM):
     ) -> Response:
         llm_input = []
         if system_message:
-            llm_input.append(
-                {
-                    "role": "system",
-                    "content": system_message,
-                }
-            )
+            llm_input.append({
+                "role": "system",
+                "content": system_message,
+            })
 
         llm_input += [
             self._convert_llm_input_message_to_raw_message(message=message)

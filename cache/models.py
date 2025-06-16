@@ -4,11 +4,9 @@ from llm_toolkit.llm.models import LLMResponse
 
 
 class LLMResponseCache(Protocol):
-    def get(self, key: str) -> LLMResponse | None:
-        ...
+    def get(self, key: str) -> LLMResponse | None: ...
 
-    def set(self, key: str, value: LLMResponse) -> None:
-        ...
+    def set(self, key: str, value: LLMResponse) -> None: ...
 
 
 class LLMInMemoryCache(LLMResponseCache):

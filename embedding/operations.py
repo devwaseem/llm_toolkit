@@ -21,7 +21,9 @@ def get_embedding(
     )
     md5_hash = md5(text.encode("utf-8")).hexdigest()
 
-    cache_key = "embedding:" + md5_hash + embedding_generator.__class__.__name__
+    cache_key = (
+        "embedding:" + md5_hash + embedding_generator.__class__.__name__
+    )
     if cached_data := cache.get(cache_key):
         return cast(EmbeddingResult, cached_data)
 
