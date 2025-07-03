@@ -327,7 +327,7 @@ class Gemini2_0_FlashWithGroundingSearch(  # noqa
 
 
 class Gemini2_5_FlashPreview(GoogleLLM):  # noqa
-    def __init__(self, api_key: str, temperature: float) -> None:
+    def __init__(self, api_key: str) -> None:
         super().__init__(
             api_key=api_key,
             model="gemini-2.5-flash-preview-04-17",
@@ -336,7 +336,6 @@ class Gemini2_5_FlashPreview(GoogleLLM):  # noqa
                 input_tokens=Decimal(0.15),
                 output_tokens=Decimal(0.60),
             ),
-            temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=1_000_000,
                 max_tokens_for_input=900_000,
