@@ -15,6 +15,7 @@ from google.genai.types import (
     GenerateContentConfig,
     GenerateContentResponse,
     GoogleSearch,
+    ThinkingConfig,
     Tool,
     ToolListUnion,
 )
@@ -68,6 +69,9 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
     def get_client(self) -> genai.Client:
         return genai.Client(api_key=self.api_key)
+
+    def _get_extra_config(self) -> dict[str, Any]:
+        return {}
 
     @override
     def extract(
@@ -251,6 +255,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 response_schema=response_schema,
                 temperature=temperature,
                 tools=self.get_tools(),
+                **self._get_extra_config(),
             ),
         )
 
@@ -319,3 +324,27 @@ class Gemini2_0_FlashWithGroundingSearch(  # noqa
         return [
             Tool(google_search=GoogleSearch()),
         ]
+
+
+class Gemini2_5_FlashPreview(GoogleLLM):  # noqa
+    def __init__(self, api_key: str, temperature: float) -> None:
+        super().__init__(
+            api_key=api_key,
+            model="gemini-2.5-flash-preview-04-17",
+            price_calculator=LLMPriceCalculator(
+                tokens=1_000_000,
+                input_tokens=Decimal(0.15),
+                output_tokens=Decimal(0.60),
+            ),
+            temperature=temperature,
+            token_budget=LLMTokenBudget(
+                llm_max_token=1_000_000,
+                max_tokens_for_input=900_000,
+                max_tokens_for_output=400_000,
+            ),
+        )
+
+    def _get_extra_config(self) -> dict[str, Any]:
+        data = super()._get_extra_config()
+        data.update({"thinking_config": ThinkingConfig(thinking_budget=1024)})
+        return data
