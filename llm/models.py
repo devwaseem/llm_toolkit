@@ -98,6 +98,9 @@ class LLMTokenBudget:
 
 
 class LLM(Protocol):
+    def get_api_key(self) -> str:
+        raise NotImplementedError
+
     def get_model(self) -> str:
         raise NotImplementedError
 

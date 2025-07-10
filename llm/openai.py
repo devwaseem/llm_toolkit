@@ -8,6 +8,7 @@ from openai import AzureOpenAI, OpenAI
 from openai.lib._pydantic import to_strict_json_schema
 from openai.types.responses.response import Response
 
+from llm_toolkit.api_key_rotator.models import APIKeyRotator, BaseAPIKeyRotator
 from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import (
     LLMAPIConnectionError,
@@ -46,7 +47,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
     def __init__(
         self,
         *,
-        api_key: str,
+        api_key: str | BaseAPIKeyRotator,
         model: str,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
@@ -56,11 +57,16 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         self._model = model
         self.price_calculator = price_calculator
         self.token_budget = token_budget
-        self._client = self.get_client()
         self._response_cache = response_cache
 
     def get_client(self) -> OpenAI:
-        return OpenAI(api_key=self._api_key)  # type: ignore
+        return OpenAI(api_key=self.get_api_key())  # type: ignore
+
+    @override
+    def get_api_key(self) -> str:
+        if isinstance(self._api_key, APIKeyRotator):
+            return self._api_key.get_next_api_key()
+        return self._api_key
 
     @override
     def get_model(self) -> str:
@@ -130,10 +136,12 @@ class OpenAILLM(LLM, StructuredOutputLLM):
     ) -> Response:
         llm_input = []
         if system_message:
-            llm_input.append({
-                "role": "system",
-                "content": system_message,
-            })
+            llm_input.append(
+                {
+                    "role": "system",
+                    "content": system_message,
+                }
+            )
 
         llm_input += [
             self._convert_llm_input_message_to_raw_message(message=message)

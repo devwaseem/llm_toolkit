@@ -20,6 +20,7 @@ from google.genai.types import (
     ToolListUnion,
 )
 
+from llm_toolkit.api_key_rotator.models import APIKeyRotator
 from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import (
     LLMAuthenticationError,
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 class GoogleLLM(LLM, StructuredOutputLLM):
     def __init__(
         self,
-        api_key: str,
+        api_key: str | APIKeyRotator,
         model: str,
         price_calculator: LLMPriceCalculator,
         token_budget: LLMTokenBudget,
@@ -60,15 +61,20 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
         self.price_calculator = price_calculator
         self.response_cache = response_cache
-        self.client = self.get_client()
         self.token_budget = token_budget
 
     @override
     def get_model(self) -> str:
         return self.model
 
+    @override
+    def get_api_key(self) -> str:
+        if isinstance(self.api_key, APIKeyRotator):
+            return self.api_key.get_next_api_key()
+        return self.api_key
+
     def get_client(self) -> genai.Client:
-        return genai.Client(api_key=self.api_key)
+        return genai.Client(api_key=self.get_api_key())
 
     def _get_extra_config(self) -> dict[str, Any]:
         return {}
@@ -216,7 +222,17 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 stack_info=False,
             )
             if exc.code == 429:
-                raise LLMRateLimitedError from exc
+                retry_after: int | None = None
+                error_details = exc.details or []
+                retry_info_list = filter(
+                    lambda x: x.get("@type", "")
+                    == "type.googleapis.com/google.rpc.RetryInfo",
+                    error_details,
+                )
+                if retry_info := next(iter(retry_info_list), None):
+                    retry_after = retry_info.get("retryDelay")
+
+                raise LLMRateLimitedError(retry_after=retry_after) from exc
 
             if exc.code == 401:
                 raise LLMAuthenticationError from exc
