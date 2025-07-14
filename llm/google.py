@@ -225,7 +225,8 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 retry_after: int | None = None
                 error_details = exc.details or []
                 retry_info_list = filter(
-                    lambda x: x.get("@type", "")
+                    lambda x: isinstance(x, dict)
+                    and x.get("@type", "")
                     == "type.googleapis.com/google.rpc.RetryInfo",
                     error_details,
                 )
