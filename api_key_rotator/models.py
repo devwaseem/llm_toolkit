@@ -9,5 +9,5 @@ class APIKeyRotator:
         return next_index % len(self.api_key_list)
 
     def get_next_api_key(self) -> str:
-        current_index = self.rotator.rotate()
+        current_index = self._rotate()
         return self.api_key_list[current_index]
