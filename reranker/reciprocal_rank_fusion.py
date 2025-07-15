@@ -1,11 +1,14 @@
 import uuid
+from abc import ABC, abstractmethod
 from typing import Generic, NamedTuple, TypeVar
 
-from src.ai_assistant.domain.rag.reranker.models import (
-    ReRanker,
-)
-
 T = TypeVar("T")
+
+
+class ReRanker(ABC, Generic[T]):
+    @abstractmethod
+    def rerank(self) -> list[T]:
+        raise NotImplementedError
 
 
 class ReciprocalRankFusionDocument(NamedTuple, Generic[T]):
