@@ -6,7 +6,7 @@ except ImportError as exc:
 import json
 import logging
 from decimal import Decimal
-from typing import Any, Type, cast, override
+from typing import Any, Type, override
 
 from google.genai.errors import ClientError, ServerError
 from google.genai.types import (
@@ -117,7 +117,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
             raise LLMEmptyResponseError
 
         return (
-            cast(PydanticModel, schema(**response_json)),
+            schema(**response_json),
             self._to_llm_response(response=response),
         )
 
@@ -264,7 +264,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
     ) -> GenerateContentResponse:
         return self.get_client().models.generate_content(
             model=self.model,
-            contents=contents,  # type: ignore
+            contents=contents,
             config=GenerateContentConfig(
                 max_output_tokens=self.token_budget.max_tokens_for_output,
                 system_instruction=system_message if system_message else None,
@@ -317,14 +317,14 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
 
 class Gemini2_0_Flash(GoogleLLM):  # noqa
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str | APIKeyRotator) -> None:
         super().__init__(
             api_key=api_key,
             model="gemini-2.0-flash",
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(0.10),
-                output_tokens=Decimal(0.40),
+                input_tokens=Decimal("0.10"),
+                output_tokens=Decimal("0.40"),
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=1_000_000,
@@ -344,14 +344,14 @@ class Gemini2_0_FlashWithGroundingSearch(  # noqa
 
 
 class Gemini2_5_FlashPreview(GoogleLLM):  # noqa
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str | APIKeyRotator) -> None:
         super().__init__(
             api_key=api_key,
             model="gemini-2.5-flash-preview-04-17",
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(0.15),
-                output_tokens=Decimal(0.60),
+                input_tokens=Decimal("0.15"),
+                output_tokens=Decimal("0.60"),
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=1_000_000,

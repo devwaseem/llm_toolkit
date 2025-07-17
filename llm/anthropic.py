@@ -185,12 +185,10 @@ class Claude3HaikuLLM(AnthropicLLM):
         self,
         *,
         api_key: str,
-        temperature: float = 1,
     ) -> None:
         super().__init__(
             api_key=api_key,
             model="claude-3-haiku-20240307",
-            temperature=temperature,
             token_budget=LLMTokenBudget(
                 llm_max_token=200_000,
                 max_tokens_for_input=190_000,
@@ -198,8 +196,8 @@ class Claude3HaikuLLM(AnthropicLLM):
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(0.25),
-                output_tokens=Decimal(1.25),
+                input_tokens=Decimal("0.25"),
+                output_tokens=Decimal("1.25"),
             ),
         )
 
@@ -220,8 +218,8 @@ class Claude3SonnetLLM(AnthropicLLM):
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(3.0),
-                output_tokens=Decimal(15.0),
+                input_tokens=Decimal("3.0"),
+                output_tokens=Decimal("15.0"),
             ),
         )
 
@@ -242,8 +240,8 @@ class Claude3OpusLLM(AnthropicLLM):
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(15.0),
-                output_tokens=Decimal(75.0),
+                input_tokens=Decimal("15.0"),
+                output_tokens=Decimal("75.0"),
             ),
         )
 
@@ -264,7 +262,7 @@ class Claude3P5SonnetLLM(AnthropicLLM):
             ),
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(3.0),
-                output_tokens=Decimal(15.0),
+                input_tokens=Decimal("3.0"),
+                output_tokens=Decimal("15.0"),
             ),
         )

@@ -211,7 +211,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 raise NotImplementedError(
                     f"{message.role} is not supported for OpenAI"
                 )
-        content = {}
+        content: str | list[dict[str, Any]]
         if isinstance(message.content, str):
             content = message.content
         elif isinstance(message.content, LLMInputImage):
@@ -277,8 +277,8 @@ class GPT35TurboLLM(OpenAILLM):
             model="gpt-3.5-turbo",
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(0.50),
-                output_tokens=Decimal(1.50),
+                input_tokens=Decimal("0.50"),
+                output_tokens=Decimal("1.50"),
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=16_385,
@@ -301,8 +301,8 @@ class GPT4oLLM(OpenAILLM):
             api_key=api_key,
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal(5.0),
-                output_tokens=Decimal(15.0),
+                input_tokens=Decimal("5.0"),
+                output_tokens=Decimal("15.0"),
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=128_000,

@@ -16,10 +16,11 @@ def get_embedding(
     text: str,
 ) -> EmbeddingResult:
     text = text.replace("\n", " ").lower()
-    text = text.translate(
-        str.maketrans({key: None for key in string.punctuation})  # type: ignore
-    )
-    md5_hash = md5(text.encode("utf-8")).hexdigest()
+    text = text.translate(str.maketrans(dict.fromkeys(string.punctuation)))
+    md5_hash = md5(
+        text.encode("utf-8"),
+        usedforsecurity=False,
+    ).hexdigest()
 
     cache_key = (
         "embedding:" + md5_hash + embedding_generator.__class__.__name__
