@@ -153,7 +153,10 @@ class DefinitionDrivenLLMSchemaGenerator(
         return decoded_schema
 
     def _generate_key(self, *, original_key: str) -> str:
-        key_hash = md5(original_key.encode("utf-8")).hexdigest()
+        key_hash = md5(
+            original_key.encode("utf-8"),
+            usedforsecurity=False,
+        ).hexdigest()
         return key_hash[:2] + "".join([i[0] for i in original_key.split("_")])
 
     def get_example(self) -> str:
