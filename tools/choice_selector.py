@@ -87,15 +87,17 @@ def llm_pick_choice(
     choices_by_id_dict: dict[str, LLMChoice] = {
         choice.choice_id: choice for choice in choices
     }
-    options_json = json.dumps([
-        {"id": choice_id, "option": choice.option}
-        for choice_id, choice in choices_by_id_dict.items()
-    ])
+    options_json = json.dumps(
+        [
+            {"id": choice_id, "option": choice.option}
+            for choice_id, choice in choices_by_id_dict.items()
+        ]
+    )
     selected_choice, llm_response = llm.extract(
         messages=[
             LLMInputMessage(
                 role=LLMMessageRole.USER,
-                content=(f"Question: {question}" f"choices: {options_json}"),
+                content=(f"Question: {question}choices: {options_json}"),
             )
         ],
         schema=LLMSelectedChoice,
