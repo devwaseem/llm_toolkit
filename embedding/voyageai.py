@@ -34,7 +34,7 @@ class VoyageAIEmbeddingGenerator(EmbeddingGeneratorInterface):
         context_limit: int,
         dimensions: Literal[1536, 1024],
     ) -> None:
-        self.client = voyageai.Client(
+        self.client = voyageai.client.Client(
             api_key=api_key,
             max_retries=3,
         )

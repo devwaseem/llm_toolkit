@@ -1,18 +1,35 @@
 import inspect
-from typing import Any, Callable, Set, Type, get_type_hints
+from typing import Any, Callable, Set, Type, TypedDict, get_type_hints
 
 try:
-    import docstring_parser
+    import docstring_parser  # type: ignore[import-not-found]
 except ImportError as exc:
     raise ImportError(
         "Please install docstring_parser to use func2tool"
     ) from exc
 
 
+class ToolParamProperty(TypedDict):
+    type: str
+    description: str
+
+
+class ToolParameter(TypedDict):
+    type: str
+    properties: dict[str, ToolParamProperty]
+    required: list[str]
+
+
+class Tool(TypedDict):
+    name: str
+    description: str
+    parameters: ToolParameter
+
+
 def func2tool(
     func: Callable[..., Any],
     ignore_params: Set[str] | None = None,
-) -> dict[str, Any]:
+) -> Tool:
     ignore_params = ignore_params or set()
 
     signature = inspect.signature(func)
@@ -23,7 +40,7 @@ def func2tool(
     # Build parameter descriptions from the parsed docstring
     param_descriptions = {p.arg_name: p.description for p in parsed_doc.params}
 
-    parameters = {
+    parameters: ToolParameter = {
         "type": "object",
         "properties": {},
         "required": [],
@@ -54,11 +71,11 @@ def func2tool(
         if param.default == inspect.Parameter.empty:
             parameters["required"].append(name)
 
-    return {
-        "name": func.__name__,
-        "description": (
+    return Tool(
+        name=func.__name__,
+        description=(
             (parsed_doc.short_description or "")
             + (parsed_doc.long_description or "")
         ),
-        "parameters": parameters,
-    }
+        parameters=parameters,
+    )

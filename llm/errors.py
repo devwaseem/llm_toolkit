@@ -2,7 +2,7 @@ class LLMJsonResponseDecodingError(Exception): ...
 
 
 class LLMRateLimitedError(Exception):
-    def __init__(self, retry_after: int | None) -> None:
+    def __init__(self, retry_after: int | None = None) -> None:
         self.retry_after = retry_after
 
     def __str__(self) -> str:

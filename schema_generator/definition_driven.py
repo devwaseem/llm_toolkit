@@ -66,7 +66,7 @@ class DefinitionDrivenLLMSchemaGenerator(
                 model_name = field.cls.__name__
                 if model_name not in self.definitions:
                     self.definitions[model_name] = self._collect_schema_fields(
-                        schema=field.cls  # type: ignore
+                        schema=field.cls
                     )
 
     def _collect_schema_fields(  # noqa

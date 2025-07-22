@@ -103,7 +103,7 @@ class AnthropicLLM(LLM):
             raise LLMPermissionDeniedError from error
 
         if assistant_message.content:
-            answer_text = assistant_message.content[0].text  # type: ignore
+            answer_text = assistant_message.content[0].text
             if output_mode == LLMOutputMode.JSON:
                 answer_text = "{\n" + answer_text
 
@@ -146,7 +146,7 @@ class AnthropicLLM(LLM):
             image = message.content.image
             content = [
                 ImageBlockParam(  # type: ignore
-                    source=Source(  # type: ignore
+                    source=Source(
                         media_type=image.mime_type,
                         data=image.base64_data,
                     )
@@ -170,8 +170,6 @@ class AnthropicLLM(LLM):
                 stop_reason = LLMStopReason.END_TURN
             case "max_tokens":
                 stop_reason = LLMStopReason.MAX_TOKENS
-            case "tool_use":
-                stop_reason = LLMStopReason.TOOL_USE
             case "stop_sequence":
                 stop_reason = LLMStopReason.STOP_SEQUENCE
             case _:

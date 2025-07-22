@@ -8,7 +8,7 @@ from openai import AzureOpenAI, OpenAI
 from openai.lib._pydantic import to_strict_json_schema
 from openai.types.responses.response import Response
 
-from llm_toolkit.api_key_rotator.models import APIKeyRotator, BaseAPIKeyRotator
+from llm_toolkit.api_key_rotator.models import APIKeyRotator
 from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import (
     LLMAPIConnectionError,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAILLM(LLM, StructuredOutputLLM):
-    _api_key: str
+    _api_key: str | APIKeyRotator
     _model: str
     _response_cache: LLMResponseCache | None
     _client: OpenAI
@@ -47,7 +47,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
     def __init__(
         self,
         *,
-        api_key: str | BaseAPIKeyRotator,
+        api_key: str | APIKeyRotator,
         model: str,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
@@ -60,7 +60,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         self._response_cache = response_cache
 
     def get_client(self) -> OpenAI:
-        return OpenAI(api_key=self.get_api_key())  # type: ignore
+        return OpenAI(api_key=self.get_api_key())
 
     @override
     def get_api_key(self) -> str:
@@ -153,7 +153,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         )
 
         try:
-            response = self.get_client().responses.create(
+            response: Response = self.get_client().responses.create(
                 model=self.get_model(),
                 temperature=temperature,
                 input=llm_input,
@@ -185,7 +185,8 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 case _:
                     raise NotImplementedError
 
-        assert response.usage is not None, "Usage metadata is not available"
+        if response.usage is None:
+            raise ValueError("Usage metadata is not available")
 
         return LLMResponse(
             llm_model=self.get_model(),
@@ -259,7 +260,7 @@ class AzureOpenAILLM(OpenAILLM):
     @override
     def get_client(self) -> OpenAI:
         return AzureOpenAI(
-            api_key=self._api_key,
+            api_key=self.get_api_key(),
             api_version=self.api_version,
             azure_endpoint=self.endpoint,
         )

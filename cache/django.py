@@ -1,3 +1,5 @@
+from typing import cast
+
 from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.models import LLMResponse
 
@@ -12,10 +14,10 @@ except ImportError as exc:
 
 class DjangoLLMResponseCache(LLMResponseCache):
     def get(self, key: str) -> LLMResponse | None:
-        if not cache.has_key(key):
-            return None
+        if response := cache.get(key):
+            return cast(LLMResponse, response)
 
-        return cache.get(key)
+        return None
 
     def set(self, key: str, value: LLMResponse) -> None:
         cache.set(key, value)
