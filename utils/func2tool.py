@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, Set, Type, TypedDict, get_type_hints
+from typing import Any, Callable, Set, TypedDict, get_type_hints
 
 try:
     import docstring_parser  # type: ignore[import-not-found]
@@ -50,7 +50,7 @@ def func2tool(
         if name in ignore_params:
             continue
 
-        param_type: Type[Any] = type_hints.get(name, str)
+        param_type: type[Any] = type_hints.get(name, str)
         json_type = "string"  # default fallback
 
         if param_type is int:

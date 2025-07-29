@@ -2,7 +2,7 @@ import inspect
 from functools import cache
 from hashlib import md5
 from pathlib import Path
-from typing import Any, Type, override
+from typing import Any, override
 
 from llm_toolkit.schema_generator.exceptions import (
     InvalidSchemaError,
@@ -28,7 +28,7 @@ class DefinitionDrivenLLMSchemaGenerator(
     def __init__(
         self,
         *,
-        schema_cls: Type[LLMSchemaModelTypeVar],
+        schema_cls: type[LLMSchemaModelTypeVar],
         encoded: bool = True,
     ) -> None:
         super().__init__(schema=schema_cls, encoded=encoded)
@@ -48,7 +48,7 @@ class DefinitionDrivenLLMSchemaGenerator(
         }
 
     def _collect_schema_definitions(
-        self, *, schema: Type[LLMSchemaModel]
+        self, *, schema: type[LLMSchemaModel]
     ) -> None:
         for attr in dir(schema):
             if attr.startswith("_"):
@@ -70,7 +70,7 @@ class DefinitionDrivenLLMSchemaGenerator(
                     )
 
     def _collect_schema_fields(  # noqa
-        self, *, schema: Type[LLMSchemaModel]
+        self, *, schema: type[LLMSchemaModel]
     ) -> dict[str, Any]:
         fields = {}
         for attr in dir(schema):

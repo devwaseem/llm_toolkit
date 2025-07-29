@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
-
-T = TypeVar("T")
+from typing import Any
 
 
-class ReRanker(ABC, Generic[T]):
+class ReRanker[T: Any](ABC):
     @abstractmethod
     def rerank(self) -> list[T]:
         raise NotImplementedError

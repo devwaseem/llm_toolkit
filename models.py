@@ -23,6 +23,6 @@ class LLMImageData:
         return mime_type or self.fallback_mime_type
 
     @cached_property
-    def base64_data(self) -> str:
+    def base64_data(self) -> bytes:
         with self.image_path.open("rb") as f:
-            return base64.standard_b64encode(f.read()).decode("utf-8")
+            return base64.standard_b64encode(f.read())

@@ -6,15 +6,20 @@ except ImportError as exc:
 import json
 import logging
 from decimal import Decimal
-from typing import Any, Type, override
+from typing import Any, cast, override
 
 from google.genai.errors import ClientError, ServerError
 from google.genai.types import (
+    Blob,
     Candidate,
+    Content,
+    ContentListUnion,
+    ContentListUnionDict,
     FinishReason,
     GenerateContentConfig,
     GenerateContentResponse,
     GoogleSearch,
+    Part,
     ThinkingConfig,
     Tool,
     ToolListUnion,
@@ -84,7 +89,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         self,
         *,
         messages: list[LLMInputMessage],
-        schema: Type[PydanticModel],
+        schema: type[PydanticModel],
         system_message: str = "",
         temperature: float = 0,
     ) -> tuple[PydanticModel, LLMResponse]:
@@ -95,10 +100,13 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         response = self._call(
             system_message=system_message,
             temperature=temperature,
-            contents=llm_messages,
+            contents=cast(ContentListUnion, llm_messages),
             response_mime_type="application/json",
             response_schema=schema,
         )
+
+        if not response.text:
+            raise LLMEmptyResponseError
 
         response_json = {}
         try:
@@ -144,7 +152,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         response = self._call(
             system_message=system_message,
             temperature=temperature,
-            contents=llm_messages,
+            contents=cast(ContentListUnion, llm_messages),
             response_mime_type=response_mime_type,
         )
         return self._to_llm_response(response=response)
@@ -163,7 +171,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
     def _convert_llm_input_message_to_raw_message(
         self, *, message: LLMInputMessage
-    ) -> dict[str, Any]:
+    ) -> Content:
         match message.role:
             case LLMMessageRole.USER:
                 role = "user"
@@ -174,35 +182,32 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                     f"{message.role} is not supported for Google AI"
                 )
 
-        parts: list[dict[str, Any]]
+        parts: list[Part]
         if isinstance(message.content, str):
-            parts = [{"text": message.content}]
+            parts = [Part(text=message.content)]
         elif isinstance(message.content, LLMInputImage):
             image = message.content.image
             parts = [
-                {"text": message.content.text},
-                {
-                    "inline_data": {
-                        "mime_type": image.mime_type,
-                        "data": image.base64_data,
-                    }
-                },
+                Part(text=message.content.text),
+                Part(
+                    inline_data=Blob(
+                        data=image.base64_data,
+                        mime_type=image.mime_type,
+                    )
+                ),
             ]
         else:
             raise NotImplementedError(f"Unhandled message type: {message}")
 
-        return {
-            "role": role,
-            "parts": parts,
-        }
+        return Content(role=role, parts=parts)
 
     def _call(
         self,
         system_message: str,
         temperature: float,
-        contents: str | list[dict[str, Any]],
+        contents: ContentListUnion | ContentListUnionDict,
         response_mime_type: str,
-        response_schema: Type[PydanticModel] | None = None,
+        response_schema: type[PydanticModel] | None = None,
     ) -> GenerateContentResponse:
         try:
             response = self._call_llm(
@@ -258,9 +263,9 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         self,
         system_message: str,
         temperature: float,
-        contents: str | list[dict[str, Any]],
+        contents: ContentListUnion | ContentListUnionDict,
         response_mime_type: str,
-        response_schema: Type[PydanticModel] | None = None,
+        response_schema: type[PydanticModel] | None = None,
     ) -> GenerateContentResponse:
         return self.get_client().models.generate_content(
             model=self.model,

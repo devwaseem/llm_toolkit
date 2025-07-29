@@ -1,7 +1,7 @@
 import logging
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, NamedTuple, Protocol, Type, TypeVar
+from typing import Any, NamedTuple, Protocol, TypeVar
 
 from pydantic import BaseModel
 
@@ -123,7 +123,7 @@ class StructuredOutputLLM(Protocol):
         self,
         *,
         messages: list[LLMInputMessage],
-        schema: Type[PydanticModel],
+        schema: type[PydanticModel],
         system_message: str = "",
         temperature: float = 0,
     ) -> tuple[PydanticModel, LLMResponse]:

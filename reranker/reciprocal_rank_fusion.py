@@ -1,33 +1,31 @@
 import uuid
 from abc import ABC, abstractmethod
-from typing import Generic, NamedTuple, TypeVar
-
-T = TypeVar("T")
+from typing import NamedTuple
 
 
-class ReRanker(ABC, Generic[T]):
+class ReRanker[T](ABC):
     @abstractmethod
     def rerank(self) -> list[T]:
         raise NotImplementedError
 
 
-class ReciprocalRankFusionDocument(NamedTuple, Generic[T]):
+class ReciprocalRankFusionDocument[T](NamedTuple):
     id: uuid.UUID | int | str
     document: T
 
 
-class ReciprocalRankFusionSource(NamedTuple, Generic[T]):
+class ReciprocalRankFusionSource[T](NamedTuple):
     k: int
     ranking_document_list: list[ReciprocalRankFusionDocument[T]]
 
 
-class ScoredRankingDocument(NamedTuple, Generic[T]):
+class ScoredRankingDocument[T](NamedTuple):
     ranking_document: ReciprocalRankFusionDocument[T]
     score: float = 0.0
 
 
-class ReciprocalRankFusionReRanker(
-    ReRanker[ReciprocalRankFusionDocument[T]], Generic[T]
+class ReciprocalRankFusionReRanker[T](
+    ReRanker[ReciprocalRankFusionDocument[T]]
 ):
     def __init__(self, sources: list[ReciprocalRankFusionSource[T]]) -> None:
         self.sources = sources

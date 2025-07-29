@@ -1,7 +1,7 @@
 import json
 import logging
 from decimal import Decimal
-from typing import Any, Type, override
+from typing import Any, override
 
 import openai
 from openai import AzureOpenAI, OpenAI
@@ -77,7 +77,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         self,
         *,
         messages: list[LLMInputMessage],
-        schema: Type[PydanticModel],
+        schema: type[PydanticModel],
         system_message: str = "",
         temperature: float = 0,
     ) -> tuple[PydanticModel, LLMResponse]:
@@ -148,13 +148,17 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             for message in messages
         ]
 
+        model = self.get_model()
+
         logger.debug(
             "Calling OpenAI LLM, model: %s, temperature: %s",
+            model,
+            temperature,
         )
 
         try:
             response: Response = self.get_client().responses.create(
-                model=self.get_model(),
+                model=model,
                 temperature=temperature,
                 input=llm_input,
                 text=text,  # type: ignore
@@ -222,7 +226,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 {
                     "type": "input_image",
                     "image_url": (
-                        f"data:{image.mime_type};base64,{image.base64_data}"
+                        f"data:{image.mime_type};base64,{image.base64_data.decode('utf-8')}"
                     ),
                 },
             ]

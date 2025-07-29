@@ -2,12 +2,10 @@ import copy
 import json
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Generic, Type, TypeVar, cast, override
-
-T = TypeVar("T", None, int, float, str, bool, datetime, list[Any])
+from typing import Any, Generic, TypeVar, cast, override
 
 
-class Field(Generic[T], ABC):
+class Field[T: None | int | float | str | bool | datetime | list[Any]](ABC):
     def __init__(
         self,
         description: str,
@@ -138,17 +136,14 @@ class BooleanField(Field[bool]):
         return self._value
 
 
-F = TypeVar("F", bound="LLMSchemaModel | Field[Any]")
-
-
-class ListField(Generic[F]):
-    cls: Type[F]
+class ListField[F: LLMSchemaModel | Field[Any]]:
+    cls: type[F]
     kwargs: dict[str, Any] | None = None
     _value: list[F]
 
     def __init__(
         self,
-        cls: Type[F],
+        cls: type[F],
         *,
         kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -208,7 +203,7 @@ class LLMSchemaModel:
     def _create_instance(
         self,
         *,
-        cls: Type["LLMSchemaModel"] | Type[Field[Any]],
+        cls: type["LLMSchemaModel"] | type[Field[Any]],
         kwargs: dict[str, Any],
         data: Any,
     ) -> "LLMSchemaModel | Field[Any]":
@@ -266,7 +261,7 @@ class LLMSchemaGenerator(ABC, Generic[LLMSchemaModelTypeVar]):
     def __init__(
         self,
         *,
-        schema: Type[LLMSchemaModelTypeVar],
+        schema: type[LLMSchemaModelTypeVar],
         encoded: bool = True,
     ) -> None:
         self.schema = schema
