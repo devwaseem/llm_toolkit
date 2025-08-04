@@ -10,16 +10,12 @@ from typing import Any, cast, override
 
 from google.genai.errors import ClientError, ServerError
 from google.genai.types import (
-    Blob,
     Candidate,
-    Content,
     ContentListUnion,
-    ContentListUnionDict,
     FinishReason,
     GenerateContentConfig,
     GenerateContentResponse,
     GoogleSearch,
-    Part,
     ThinkingConfig,
     Tool,
     ToolListUnion,
@@ -152,7 +148,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         response = self._call(
             system_message=system_message,
             temperature=temperature,
-            contents=cast(ContentListUnion, llm_messages),
+            contents=llm_messages,
             response_mime_type=response_mime_type,
         )
         return self._to_llm_response(response=response)
@@ -171,7 +167,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
     def _convert_llm_input_message_to_raw_message(
         self, *, message: LLMInputMessage
-    ) -> Content:
+    ) -> dict[str, Any]:
         match message.role:
             case LLMMessageRole.USER:
                 role = "user"
@@ -182,30 +178,32 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                     f"{message.role} is not supported for Google AI"
                 )
 
-        parts: list[Part]
         if isinstance(message.content, str):
-            parts = [Part(text=message.content)]
+            parts = [{"text": message.content}]
         elif isinstance(message.content, LLMInputImage):
             image = message.content.image
             parts = [
-                Part(text=message.content.text),
-                Part(
-                    inline_data=Blob(
-                        data=image.base64_data,
-                        mime_type=image.mime_type,
-                    )
-                ),
+                {"text": message.content.text},
+                {
+                    "inline_data": {
+                        "mime_type": image.mime_type,
+                        "data": image.base64_data,
+                    }
+                },
             ]
         else:
             raise NotImplementedError(f"Unhandled message type: {message}")
 
-        return Content(role=role, parts=parts)
+        return {
+            "role": role,
+            "parts": parts,
+        }
 
     def _call(
         self,
         system_message: str,
         temperature: float,
-        contents: ContentListUnion | ContentListUnionDict,
+        contents: list[dict[str, Any]],
         response_mime_type: str,
         response_schema: type[PydanticModel] | None = None,
     ) -> GenerateContentResponse:
@@ -263,7 +261,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         self,
         system_message: str,
         temperature: float,
-        contents: ContentListUnion | ContentListUnionDict,
+        contents: list[dict[str, Any]],
         response_mime_type: str,
         response_schema: type[PydanticModel] | None = None,
     ) -> GenerateContentResponse:

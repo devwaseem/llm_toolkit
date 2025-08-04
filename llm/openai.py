@@ -226,7 +226,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 {
                     "type": "input_image",
                     "image_url": (
-                        f"data:{image.mime_type};base64,{image.base64_data.decode('utf-8')}"
+                        f"data:{image.mime_type};base64,{image.base64_data}"
                     ),
                 },
             ]
