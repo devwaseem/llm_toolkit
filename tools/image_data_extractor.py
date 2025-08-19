@@ -6,13 +6,13 @@ import structlog
 
 from llm_toolkit.llm.models import (
     LLM,
-    LLMInputImage,
+    LLMInputFile,
     LLMInputMessage,
     LLMMessageRole,
     LLMOutputMode,
     LLMResponse,
 )
-from llm_toolkit.models import LLMImageData
+from llm_toolkit.models import LLMFileData
 from llm_toolkit.schema_generator.models import (
     LLMSchemaGenerator,
     LLMSchemaModel,
@@ -44,9 +44,9 @@ def extract_schema_data_from_image(
     llm_messages.append(
         LLMInputMessage(
             role=LLMMessageRole.USER,
-            content=LLMInputImage(
-                image=LLMImageData(
-                    image_path=str(image_file),
+            content=LLMInputFile(
+                file=LLMFileData(
+                    path=str(image_file),
                 ),
                 text=json.dumps(schema_dict),
             ),

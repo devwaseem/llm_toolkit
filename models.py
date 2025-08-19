@@ -4,16 +4,11 @@ from functools import cached_property
 from pathlib import Path
 
 
-class LLMImageData:
-    def __init__(
-        self,
-        *,
-        image_path: str | Path,
-        fallback_mime_type: str = "image/jpeg",
-    ) -> None:
-        self.image_path = Path(image_path)
+class LLMFileData:
+    def __init__(self, *, path: str | Path, fallback_mime_type: str) -> None:
+        self.image_path = Path(path)
         if not self.image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
+            raise FileNotFoundError(f"file not found: {path}")
 
         self.fallback_mime_type: str = fallback_mime_type
 

@@ -27,7 +27,7 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
-    LLMInputImage,
+    LLMInputFile,
     LLMInputMessage,
     LLMMessageRole,
     LLMOutputMode,
@@ -142,8 +142,8 @@ class AnthropicLLM(LLM):
 
         if isinstance(message.content, str):
             content = message.content
-        elif isinstance(message.content, LLMInputImage):
-            image = message.content.image
+        elif isinstance(message.content, LLMInputFile):
+            image = message.content.file
             content = [
                 ImageBlockParam(  # type: ignore
                     source=Source(

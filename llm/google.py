@@ -33,7 +33,7 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
-    LLMInputImage,
+    LLMInputFile,
     LLMInputMessage,
     LLMMessageRole,
     LLMOutputMode,
@@ -180,8 +180,8 @@ class GoogleLLM(LLM, StructuredOutputLLM):
 
         if isinstance(message.content, str):
             parts = [{"text": message.content}]
-        elif isinstance(message.content, LLMInputImage):
-            image = message.content.image
+        elif isinstance(message.content, LLMInputFile):
+            image = message.content.file
             parts = [
                 {"text": message.content.text},
                 {

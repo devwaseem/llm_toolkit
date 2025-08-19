@@ -5,7 +5,7 @@ from typing import Any, NamedTuple, Protocol, TypeVar
 
 from pydantic import BaseModel
 
-from llm_toolkit.models import LLMImageData
+from llm_toolkit.models import LLMFileData
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +20,14 @@ class LLMMessageRole(StrEnum):
     ASSISTANT = "ASSISTANT"
 
 
-class LLMInputImage(NamedTuple):
+class LLMInputFile(NamedTuple):
     text: str
-    image: LLMImageData
+    file: LLMFileData
 
 
 class LLMInputMessage(NamedTuple):
     role: LLMMessageRole
-    content: str | LLMInputImage
+    content: str | LLMInputFile
 
 
 class LLMStopReason(StrEnum):

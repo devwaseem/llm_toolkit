@@ -20,7 +20,7 @@ from llm_toolkit.llm.errors import (
 )
 from llm_toolkit.llm.models import (
     LLM,
-    LLMInputImage,
+    LLMInputFile,
     LLMInputMessage,
     LLMMessageRole,
     LLMOutputMode,
@@ -219,8 +219,8 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         content: str | list[dict[str, Any]]
         if isinstance(message.content, str):
             content = message.content
-        elif isinstance(message.content, LLMInputImage):
-            image = message.content.image
+        elif isinstance(message.content, LLMInputFile):
+            image = message.content.file
             content = [
                 {"type": "input_text", "text": message.content.text},
                 {
