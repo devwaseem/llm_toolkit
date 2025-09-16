@@ -30,7 +30,7 @@ class LLMChoice(NamedTuple):
     option: str | int | dict[str, Any]
 
 
-_SYSTEM_MESSAGE = """ 
+_SYSTEM_MESSAGE = """
 You are a Intelligent Machine which given a question and
 list of choices in JSON, You will pick the right choice and return its ID
 in JSON format as explained below. If no option is correct, return null.
@@ -51,7 +51,7 @@ Options:
 
 Output:
 {"id": null}
-"""  # noqa
+"""
 
 
 class LLMSelectedChoice(BaseModel):
@@ -93,7 +93,7 @@ def llm_pick_choice(
             for choice_id, choice in choices_by_id_dict.items()
         ]
     )
-    selected_choice, llm_response = llm.extract(
+    selected_choice, _ = llm.extract(
         messages=[
             LLMInputMessage(
                 role=LLMMessageRole.USER,

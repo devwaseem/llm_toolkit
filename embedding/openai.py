@@ -40,7 +40,7 @@ class OpenAIEmbeddingGenerator(EmbeddingGeneratorInterface):
         api_key: str,
         model: str,
         context_limit: int,
-        dimensions: Literal[1536, 1024, 3072, None] = None,
+        dimensions: Literal[1536, 1024, 3072] | None = None,
     ) -> None:
         self.client = OpenAI(api_key=api_key)
         self.model = model
