@@ -1,5 +1,5 @@
 import json
-from typing import Any, NamedTuple, Protocol
+from typing import Any, NamedTuple
 
 from pydantic import BaseModel
 from tenacity import (
@@ -18,7 +18,6 @@ from llm_toolkit.llm.errors import (
     LLMRateLimitedError,
 )
 from llm_toolkit.llm.models import (
-    LLM,
     LLMInputMessage,
     LLMMessageRole,
     StructuredOutputLLM,
@@ -51,14 +50,11 @@ Options:
 
 Output:
 {"id": null}
-"""
+"""  # noqa
 
 
 class LLMSelectedChoice(BaseModel):
     id: str | None
-
-
-class _StructuredOutputSupportedLLM(LLM, StructuredOutputLLM, Protocol): ...
 
 
 @retry(
@@ -80,7 +76,7 @@ class _StructuredOutputSupportedLLM(LLM, StructuredOutputLLM, Protocol): ...
     stop=stop_after_delay(300),
 )
 def llm_pick_choice(
-    llm: _StructuredOutputSupportedLLM,
+    llm: StructuredOutputLLM,
     question: str,
     choices: list[LLMChoice],
 ) -> LLMChoice | None:
@@ -102,7 +98,8 @@ def llm_pick_choice(
         ],
         schema=LLMSelectedChoice,
     )
-    if selected_choice.id is None:
+    assert selected_choice is not None  # nosec
+    if not selected_choice.id:
         return None
 
     return choices_by_id_dict.get(selected_choice.id)

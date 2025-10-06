@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from google.genai.errors import ClientError, ServerError
 
-from google import genai
 from llm_toolkit.api_key_rotator.models import APIKeyRotator
 from llm_toolkit.llm.errors import (
     LLMAuthenticationError,

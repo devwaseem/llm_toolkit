@@ -74,7 +74,7 @@ _INTRO_TEMPLATE = """
 {% else %}
 [bold red]No Agent was registered[/]
 {% endfor %}
-"""
+"""  # noqa
 
 
 class AgentRuntimeRegistry:

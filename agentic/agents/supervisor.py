@@ -118,7 +118,8 @@ class SupervisorAgent(Agent):
         )
         self._runtime.query_agent(
             query=(
-                f"Task: {task}, additional_information: {additional_information}"
+                f"Task: {task}, "
+                f"additional_information: {additional_information}"
             ),
             session_id=session.id,
             metadata=metadata,
