@@ -8,9 +8,9 @@ import logging
 from typing import Any, override
 from uuid import uuid4
 
-from google import genai
 from google.genai.errors import ClientError, ServerError
 
+from google import genai
 from llm_toolkit.api_key_rotator.models import APIKeyRotator
 from llm_toolkit.llm.errors import (
     LLMAuthenticationError,
@@ -30,7 +30,7 @@ from llm_toolkit.llm.models import (
     LLMResponse,
     LLMStopReason,
     LLMTokenBudget,
-    LLMToolCall,
+    LLMToolCallRequest,
     LLMToolCallResponse,
     LLMToolRegistry,
     LLMTools,
@@ -75,6 +75,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         system_message: str = "",
         temperature: float = 0,
         tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> tuple[PydanticModel | None, LLMResponse]:
         tool_registry = LLMToolRegistry()
         if tools:
@@ -129,12 +130,14 @@ class GoogleLLM(LLM, StructuredOutputLLM):
             messages = tool_registry.process_tool_calls(
                 messages=messages,
                 tool_calls=llm_response.function_calls,
+                metadata=metadata or {},
             )
             return self.extract(
                 messages=messages,
                 schema=schema,
                 system_message=system_message,
                 temperature=temperature,
+                metadata=metadata,
                 tools=tools,
             )
 
@@ -152,6 +155,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
         temperature: float = 0,
         tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LLMResponse:
         tool_registry = LLMToolRegistry()
         if tools:
@@ -178,7 +182,6 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         )
 
         llm_response = self._to_llm_response(response=response)
-        print("input_tokens: ", llm_response.prompt_tokens_used)
 
         if (
             tools
@@ -189,6 +192,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
             messages = tool_registry.process_tool_calls(
                 messages=messages,
                 tool_calls=llm_response.function_calls,
+                metadata=metadata or {},
             )
             return self.complete_chat(
                 messages=messages,
@@ -196,6 +200,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 output_mode=output_mode,
                 temperature=temperature,
                 tools=tools,
+                metadata=metadata,
             )
 
         return llm_response
@@ -269,7 +274,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
         elif isinstance(message.content, LLMInputFile):
             image = message.content.file
             parts = [
-                genai.types.Part(text=message.content.text),
+                genai.types.Part.from_text(text=message.content.text),
                 genai.types.Part(
                     inline_data=genai.types.Blob(
                         mime_type=image.mime_type,
@@ -277,7 +282,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                     )
                 ),
             ]
-        elif isinstance(message.content, LLMToolCall):
+        elif isinstance(message.content, LLMToolCallRequest):
             tool_call = message.content
             parts = [
                 genai.types.Part(
@@ -423,10 +428,10 @@ class GoogleLLM(LLM, StructuredOutputLLM):
                 answer="",
                 prompt_tokens_used=prompt_tokens_used,
                 completion_tokens_used=completion_tokens_used,
-                cost=cost,
+                cost=float(cost),
                 stop_reason=LLMStopReason.TOOL_USE,
                 function_calls=[
-                    LLMToolCall(
+                    LLMToolCallRequest(
                         id=call.id or "call_" + uuid4().hex,
                         name=call.name,
                         arguments=call.args or {},
@@ -455,10 +460,7 @@ class GoogleLLM(LLM, StructuredOutputLLM):
             answer=answer_text,
             prompt_tokens_used=prompt_tokens_used,
             completion_tokens_used=completion_tokens_used,
-            cost=self.price_calculator.calculate_price(
-                input_tokens=prompt_tokens_used,
-                output_tokens=completion_tokens_used,
-            ),
+            cost=float(cost),
             stop_reason=self._get_stop_reason(response_candidate=candidate),
         )
 

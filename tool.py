@@ -3,7 +3,6 @@ import inspect
 from typing import (
     Any,
     Callable,
-    NamedTuple,
     ParamSpec,
     Set,
     TypeAliasType,
@@ -34,9 +33,14 @@ class ToolParameters(BaseModel):
 
 class ToolDef(BaseModel):
     name: str
-    description: str
+    short_description: str
+    long_description: str
     parameters: ToolParameters
     instructions: str = ""
+
+    @property
+    def description(self) -> str:
+        return f"{self.short_description}\n{self.long_description}"
 
     def get_tool_dict(self) -> dict[str, Any]:
         return {
@@ -48,40 +52,64 @@ class ToolDef(BaseModel):
         }
 
 
-class LLMTool(NamedTuple):
-    name: str
+class LLMTool:
     definition: ToolDef
     func: Callable[..., str] | None
+
+    def __init__(
+        self, *, definition: ToolDef, func: Callable[..., str] | None
+    ) -> None:
+        self.definition = definition
+        self.func = func
+
+    @staticmethod
+    def from_callable(func: Callable[..., str]) -> "LLMTool":
+        if inspect.isclass(func):
+            raise TypeError("func must be a function, not a class")
+
+        if not callable(func):
+            raise TypeError("func must be a callable")
+
+        is_llm_tool = hasattr(func, "__is_llm_tool__")
+        if is_llm_tool:
+            definition = cast(ToolDef, func.__llm_tool_def__)  # type: ignore[attr-defined]
+        else:
+            definition = func2tool(
+                func,
+                ignore_params={
+                    "self",
+                    "metadata",
+                },
+            )
+
+        if is_llm_tool and hasattr(func, "__llm_tool_name__"):
+            definition.name = cast(str, func.__llm_tool_name__)  # type: ignore[attr-defined]
+
+        return LLMTool(definition=definition, func=func)
+
+    @property
+    def name(self) -> str:
+        return self.definition.name
+
+    @name.setter
+    def name(self, name: str) -> None:
+        self.definition.name = name
+
+    @property
+    def is_metadata_requested(self) -> bool:
+        if not self.func:
+            return False
+        return "metadata" in inspect.signature(self.func).parameters
+
+    def __repr__(self) -> str:
+        return (
+            f"LLMTool(name={self.name}, definition={self.definition}, "
+            f"func={self.func.__name__ if self.func else None})"
+        )
 
 
 P = ParamSpec("P")
 R = TypeVar("R")
-
-
-class CallableTool:
-    name: str
-    definition: ToolDef
-    func: Callable[..., str]
-
-    def __init__(self, func: Callable[..., str]) -> None:
-        self.func = func
-        if hasattr(self.func, "__is_llm_toolkit_tool__"):
-            self.definition = cast(ToolDef, self.func.__llm_toolkit_tool_def__)  # type: ignore[attr-defined]
-        else:
-            self.definition = func2tool(self.func)
-
-        if hasattr(self.func, "__llm_toolkit_tool_name__"):
-            self.name = cast(str, self.func.__llm_toolkit_tool_name__)  # type: ignore[attr-defined]
-            self.definition.name = self.name
-        else:
-            self.name = self.definition.name
-
-    def to_llm_tool(self) -> LLMTool:
-        return LLMTool(
-            name=self.name,
-            definition=self.definition,
-            func=self.func,
-        )
 
 
 def llm_tool(
@@ -92,13 +120,14 @@ def llm_tool(
 ) -> Callable[[Callable[P, str]], Callable[P, str]]:
     ignore_params = ignore_params or set()
     ignore_params.add("self")
+    ignore_params.add("metadata")
 
     def wrapper(func: Callable[P, str]) -> Callable[P, str]:
         @functools.wraps(func)
         def wrapped_func(*args: P.args, **kwargs: P.kwargs) -> str:
             return func(*args, **kwargs)
 
-        wrapped_func.__is_llm_toolkit_tool__ = True  # type: ignore[attr-defined]
+        wrapped_func.__is_llm_tool__ = True  # type: ignore[attr-defined]
 
         tool_def = func2tool(
             func,
@@ -112,8 +141,8 @@ def llm_tool(
 
         tool_def.name = tool_name
         tool_def.instructions = instructions
-        wrapped_func.__llm_toolkit_tool_name__ = tool_name  # type: ignore[attr-defined]
-        wrapped_func.__llm_toolkit_tool_def__ = tool_def  # type: ignore[attr-defined]
+        wrapped_func.__llm_tool_name__ = tool_name  # type: ignore[attr-defined]
+        wrapped_func.__llm_tool_def__ = tool_def  # type: ignore[attr-defined]
         return wrapped_func
 
     return wrapper
@@ -194,10 +223,8 @@ def func2tool(
 
     return ToolDef(
         name=function_name,
-        description=(
-            (parsed_doc.short_description or "")
-            + (parsed_doc.long_description or "")
-        ),
+        short_description=parsed_doc.short_description or "",
+        long_description=parsed_doc.long_description or "",
         instructions="",
         parameters=parameters,
     )
@@ -217,31 +244,12 @@ class ToolKit:
                 and not attr.startswith("_")
                 and attr not in blacklist
             ):
-                cls_tool = getattr(self.__class__, attr)
-                tool_def: ToolDef
-                is_llm_toolkit_tool = hasattr(
-                    cls_tool, "__is_llm_toolkit_tool__"
-                )
-                if is_llm_toolkit_tool:
-                    tool_def = cls_tool.__llm_toolkit_tool_def__  # type: ignore[attr-defined]
-                else:
-                    tool_def = func2tool(
-                        cls_tool,
-                        ignore_params={"self"},
-                    )
+                func = getattr(self, attr)
+                tool = LLMTool.from_callable(func)
 
-                if toolkit_name not in tool_def.name:
-                    new_name = toolkit_name + "__" + tool_def.name
-                    tool_def.name = new_name
-                    if is_llm_toolkit_tool:
-                        cls_tool.__llm_toolkit_tool_name__ = new_name  # type: ignore[attr-defined]
+                if toolkit_name not in tool.name:
+                    tool.name = toolkit_name + "__" + tool.name
 
-                tools.append(
-                    LLMTool(
-                        name=tool_def.name,
-                        definition=tool_def,
-                        func=getattr(self, attr),
-                    )
-                )
+                tools.append(tool)
 
         return tools

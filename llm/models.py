@@ -1,4 +1,3 @@
-import inspect
 import logging
 from abc import ABC, abstractmethod
 from decimal import Decimal
@@ -7,13 +6,14 @@ from typing import (
     Any,
     Callable,
     NamedTuple,
+    Sequence,
     TypeVar,
 )
 
 from pydantic import BaseModel
 
 from llm_toolkit.models import LLMFileData
-from llm_toolkit.tool import CallableTool, LLMTool, ToolDef, ToolKit
+from llm_toolkit.tool import LLMTool, ToolDef, ToolKit
 
 logger = logging.getLogger(__name__)
 
@@ -30,25 +30,25 @@ class LLMMessageRole(StrEnum):
     TOOL_OUTPUT = "TOOL_OUTPUT"
 
 
-class LLMInputFile(NamedTuple):
+class LLMInputFile(BaseModel):
     text: str
     file: LLMFileData
 
 
-class LLMToolCall(NamedTuple):
+class LLMToolCallRequest(BaseModel):
     id: str
     name: str
     arguments: dict[str, Any]
 
 
-class LLMToolCallResponse(NamedTuple):
-    tool_call: LLMToolCall
+class LLMToolCallResponse(BaseModel):
+    tool_call: LLMToolCallRequest
     output: str
 
 
-class LLMInputMessage(NamedTuple):
+class LLMInputMessage(BaseModel):
     role: LLMMessageRole
-    content: str | LLMInputFile | LLMToolCall | LLMToolCallResponse
+    content: str | LLMInputFile | LLMToolCallRequest | LLMToolCallResponse
 
     @staticmethod
     def from_human(content: str | LLMInputFile) -> "LLMInputMessage":
@@ -65,7 +65,9 @@ class LLMInputMessage(NamedTuple):
         )
 
     @staticmethod
-    def from_tool_call(tool_call: LLMToolCall) -> "LLMInputMessage":
+    def from_tool_call_request(
+        tool_call: LLMToolCallRequest,
+    ) -> "LLMInputMessage":
         return LLMInputMessage(
             role=LLMMessageRole.TOOL_CALL,
             content=tool_call,
@@ -88,13 +90,13 @@ class LLMStopReason(StrEnum):
     STOP_SEQUENCE = "STOP_SEQUENCE"
 
 
-class LLMResponse(NamedTuple):
+class LLMResponse(BaseModel):
     llm_model: str
     answer: str
     prompt_tokens_used: int
     completion_tokens_used: int
-    cost: Decimal
-    function_calls: list[LLMToolCall] | None = None
+    cost: float
+    function_calls: list[LLMToolCallRequest] | None = None
     stop_reason: LLMStopReason = LLMStopReason.END_TURN
 
 
@@ -143,13 +145,8 @@ class LLMTokenBudget:
         return self._max_tokens_for_output
 
 
-class LLMToolSettings(NamedTuple):
-    call_tool_automatically: bool = True
-    parallel_tool_calls: bool = True
-
-
 class LLMTools(NamedTuple):
-    tools: list[Callable[..., str] | ToolKit | ToolDef]
+    tools: Sequence[Callable[..., str] | ToolKit | ToolDef | LLMTool]
     call_automatically: bool = True
     parallel_tool_calls: bool = True
 
@@ -163,30 +160,22 @@ class LLMToolRegistry:
         self.registry: dict[str, LLMTool] = {}
 
     def add(
-        self, tool: Callable[..., str] | ToolKit | ToolDef | CallableTool
+        self, tool: Callable[..., str] | ToolKit | ToolDef | LLMTool
     ) -> None:
-        if isinstance(tool, ToolKit):
+        if isinstance(tool, LLMTool):
+            self.registry[tool.name] = tool
+
+        elif isinstance(tool, ToolKit):
             for t in tool.get_tools():
                 self.registry[t.name] = t
 
-        elif isinstance(tool, CallableTool):
-            self.registry[tool.name] = tool.to_llm_tool()
-
         elif isinstance(tool, ToolDef):
-            self.registry[tool.name] = LLMTool(
-                name=tool.name,
-                definition=tool,
-                func=None,
-            )
+            llm_tool = LLMTool(definition=tool, func=None)
+            self.registry[llm_tool.name] = llm_tool
 
-        elif callable(tool) and not inspect.isclass(tool):
-            callable_tool = CallableTool(func=tool)
-            name = callable_tool.name
-            self.registry[name] = LLMTool(
-                name=name,
-                definition=callable_tool.definition,
-                func=tool,
-            )
+        elif callable(tool):
+            llm_tool = LLMTool.from_callable(tool)
+            self.registry[llm_tool.name] = llm_tool
 
         else:
             raise TypeError(f"Unsupported tool type: {tool}")
@@ -194,18 +183,21 @@ class LLMToolRegistry:
     def process_tool_calls(
         self,
         messages: list[LLMInputMessage],
-        tool_calls: list[LLMToolCall],
+        tool_calls: list[LLMToolCallRequest],
+        metadata: dict[str, Any],
     ) -> list[LLMInputMessage]:
         if not tool_calls:
             return messages
 
         messages = messages.copy()
         for tool_call in tool_calls:
-            print(tool_call)
-            messages.append(LLMInputMessage.from_tool_call(tool_call))
-            logger.debug("Calling tool: %s", tool_call.name)
+            messages.append(LLMInputMessage.from_tool_call_request(tool_call))
+            logger.info("Calling tool: %s", tool_call.name)
             try:
-                output = self.execute(tool_call=tool_call)
+                output = self.execute(
+                    tool_call=tool_call,
+                    metadata=metadata,
+                )
             except Exception as exc:
                 logger.exception(
                     "Failed to execute tool: %s",
@@ -229,7 +221,12 @@ class LLMToolRegistry:
 
         return messages
 
-    def execute(self, tool_call: LLMToolCall) -> str:
+    def execute(
+        self,
+        *,
+        tool_call: LLMToolCallRequest,
+        metadata: dict[str, Any],
+    ) -> str:
         if tool_call.name not in self.registry:
             raise ValueError(f"Unknown tool: {tool_call.name}")
 
@@ -239,7 +236,11 @@ class LLMToolRegistry:
                 f"Tool {tool.name} is not registered to be callable"
             )
 
-        return tool.func(**tool_call.arguments)
+        tool_call_arguments = tool_call.arguments
+        if tool.is_metadata_requested:
+            tool_call_arguments["metadata"] = metadata
+
+        return tool.func(**tool_call_arguments)
 
     @property
     def definitions(self) -> list[ToolDef]:
@@ -247,6 +248,9 @@ class LLMToolRegistry:
 
     def get_short_descriptions(self) -> list[tuple[str, str]]:
         return [(i.name, i.description) for i in self.definitions]
+
+    def get_tools(self) -> list[LLMTool]:
+        return list(self.registry.values())
 
     def __str__(self) -> str:
         return "\n\n".join(
@@ -272,6 +276,7 @@ class LLM(ABC):
         temperature: float = 0,
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
         tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LLMResponse:
         raise NotImplementedError
 
@@ -289,5 +294,6 @@ class StructuredOutputLLM(ABC):
         system_message: str = "",
         temperature: float = 0,
         tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> tuple[PydanticModel | None, LLMResponse]:
         raise NotImplementedError

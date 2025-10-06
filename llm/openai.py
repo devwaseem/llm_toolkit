@@ -36,7 +36,7 @@ from llm_toolkit.llm.models import (
     LLMResponse,
     LLMStopReason,
     LLMTokenBudget,
-    LLMToolCall,
+    LLMToolCallRequest,
     LLMToolCallResponse,
     LLMToolRegistry,
     LLMTools,
@@ -90,6 +90,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         system_message: str = "",
         temperature: float = 0,
         tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> tuple[PydanticModel | None, LLMResponse]:
         tool_registry = LLMToolRegistry()
         if tools:
@@ -120,6 +121,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             messages = tool_registry.process_tool_calls(
                 messages=messages,
                 tool_calls=llm_response.function_calls,
+                metadata=metadata or {},
             )
             return self.extract(
                 messages=messages,
@@ -127,6 +129,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 system_message=system_message,
                 temperature=temperature,
                 tools=tools,
+                metadata=metadata,
             )
 
         return (
@@ -143,6 +146,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
         temperature: float = 0,
         tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LLMResponse:
         tool_registry = LLMToolRegistry()
         if tools:
@@ -175,6 +179,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             messages = tool_registry.process_tool_calls(
                 messages=messages,
                 tool_calls=llm_response.function_calls,
+                metadata=metadata or {},
             )
             return self.complete_chat(
                 messages=messages,
@@ -182,6 +187,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 output_mode=output_mode,
                 temperature=temperature,
                 tools=tools,
+                metadata=metadata,
             )
 
         return llm_response
@@ -232,7 +238,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             if schema:
                 return self.get_client().responses.parse(
                     model=model,
-                    # temperature=temperature,
+                    temperature=temperature,
                     input=llm_input,
                     parallel_tool_calls=parallel_tool_calls,
                     tools=tools,  # type: ignore
@@ -241,7 +247,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
 
             return self.get_client().responses.create(  # type: ignore
                 model=model,
-                # temperature=temperature,
+                temperature=temperature,
                 input=llm_input,
                 parallel_tool_calls=parallel_tool_calls,
                 tools=tools,
@@ -286,7 +292,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         for output in response.output:
             if output.type == "function_call":
                 tool_calls.append(
-                    LLMToolCall(
+                    LLMToolCallRequest(
                         id=output.call_id,
                         name=output.name,
                         arguments=json.loads(output.arguments),
@@ -303,7 +309,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 answer=answer,
                 prompt_tokens_used=prompt_tokens_used,
                 completion_tokens_used=completion_tokens_used,
-                cost=cost,
+                cost=float(cost),
                 stop_reason=LLMStopReason.TOOL_USE,
                 function_calls=tool_calls,
             )
@@ -313,7 +319,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             answer=answer,
             prompt_tokens_used=prompt_tokens_used,
             completion_tokens_used=completion_tokens_used,
-            cost=cost,
+            cost=float(cost),
             stop_reason=stop_reason,
         )
 
@@ -355,7 +361,7 @@ class OpenAILLM(LLM, StructuredOutputLLM):
                 ],
             )
 
-        if isinstance(message.content, LLMToolCall):
+        if isinstance(message.content, LLMToolCallRequest):
             tool_call = message.content
             return ResponseCustomToolCallParam(
                 type="custom_tool_call",
