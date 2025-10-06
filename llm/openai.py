@@ -1,15 +1,23 @@
 import json
 import logging
-from decimal import Decimal
-from typing import Any, override
+from typing import Any, Literal, cast, override
 
 import openai
 from openai import AzureOpenAI, OpenAI
-from openai.lib._pydantic import to_strict_json_schema
+from openai.types.responses import (
+    EasyInputMessageParam,
+    ParsedResponse,
+    ResponseCustomToolCallOutputParam,
+    ResponseCustomToolCallParam,
+    ResponseInputImageParam,
+    ResponseInputItemParam,
+    ResponseInputParam,
+    ResponseInputTextParam,
+)
 from openai.types.responses.response import Response
+from openai.types.shared.responses_model import ResponsesModel
 
 from llm_toolkit.api_key_rotator.models import APIKeyRotator
-from llm_toolkit.cache.models import LLMResponseCache
 from llm_toolkit.llm.errors import (
     LLMAPIConnectionError,
     LLMAPITimeoutError,
@@ -28,6 +36,10 @@ from llm_toolkit.llm.models import (
     LLMResponse,
     LLMStopReason,
     LLMTokenBudget,
+    LLMToolCallRequest,
+    LLMToolCallResponse,
+    LLMToolRegistry,
+    LLMTools,
     PydanticModel,
     StructuredOutputLLM,
 )
@@ -37,8 +49,7 @@ logger = logging.getLogger(__name__)
 
 class OpenAILLM(LLM, StructuredOutputLLM):
     _api_key: str | APIKeyRotator
-    _model: str
-    _response_cache: LLMResponseCache | None
+    _model: ResponsesModel
     _client: OpenAI
 
     token_budget: LLMTokenBudget
@@ -48,16 +59,14 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         self,
         *,
         api_key: str | APIKeyRotator,
-        model: str,
+        model: ResponsesModel,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
-        response_cache: LLMResponseCache | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self.price_calculator = price_calculator
         self.token_budget = token_budget
-        self._response_cache = response_cache
 
     def get_client(self) -> OpenAI:
         return OpenAI(api_key=self.get_api_key())
@@ -80,24 +89,52 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         schema: type[PydanticModel],
         system_message: str = "",
         temperature: float = 0,
-    ) -> tuple[PydanticModel, LLMResponse]:
-        response = self._call(
-            system_message=system_message,
-            temperature=temperature,
-            messages=messages,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": schema.__name__,
-                    "schema": to_strict_json_schema(schema),
-                    "strict": True,
-                }
-            },
+        tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[PydanticModel | None, LLMResponse]:
+        tool_registry = LLMToolRegistry()
+        if tools:
+            for tool in tools.tools:
+                tool_registry.add(tool=tool)
+
+        response = cast(
+            ParsedResponse[PydanticModel],
+            self._call(
+                system_message=system_message,
+                temperature=temperature,
+                messages=messages,
+                schema=schema,
+                text={},
+                tool_registry=tool_registry,
+            ),
         )
 
+        data = response.output_parsed
+        llm_response = self._to_llm_response(response=response)
+
+        if (
+            tools
+            and llm_response.stop_reason == LLMStopReason.TOOL_USE
+            and llm_response.function_calls
+            and tools.call_automatically
+        ):
+            messages = tool_registry.process_tool_calls(
+                messages=messages,
+                tool_calls=llm_response.function_calls,
+                metadata=metadata or {},
+            )
+            return self.extract(
+                messages=messages,
+                schema=schema,
+                system_message=system_message,
+                temperature=temperature,
+                tools=tools,
+                metadata=metadata,
+            )
+
         return (
-            schema(**json.loads(response.output_text)),
-            self._to_llm_response(response=response),
+            data,
+            llm_response,
         )
 
     @override
@@ -108,7 +145,14 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         system_message: str = "",
         output_mode: LLMOutputMode = LLMOutputMode.TEXT,
         temperature: float = 0,
+        tools: LLMTools | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LLMResponse:
+        tool_registry = LLMToolRegistry()
+        if tools:
+            for tool in tools.tools:
+                tool_registry.add(tool=tool)
+
         output_type = "text"
         if output_mode == LLMOutputMode.JSON:
             output_type = "json_object"
@@ -124,7 +168,29 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             },
         )
 
-        return self._to_llm_response(response=response)
+        llm_response = self._to_llm_response(response=response)
+
+        if (
+            tools
+            and llm_response.stop_reason == LLMStopReason.TOOL_USE
+            and llm_response.function_calls
+            and tools.call_automatically
+        ):
+            messages = tool_registry.process_tool_calls(
+                messages=messages,
+                tool_calls=llm_response.function_calls,
+                metadata=metadata or {},
+            )
+            return self.complete_chat(
+                messages=messages,
+                system_message=system_message,
+                output_mode=output_mode,
+                temperature=temperature,
+                tools=tools,
+                metadata=metadata,
+            )
+
+        return llm_response
 
     def _call(
         self,
@@ -133,14 +199,17 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         temperature: float,
         messages: list[LLMInputMessage],
         text: dict[str, Any],
-    ) -> Response:
-        llm_input = []
+        schema: type[PydanticModel] | None = None,
+        tool_registry: LLMToolRegistry | None = None,
+        parallel_tool_calls: bool = True,
+    ) -> Response | ParsedResponse[Any]:
+        llm_input: ResponseInputParam = []
         if system_message:
             llm_input.append(
-                {
-                    "role": "system",
-                    "content": system_message,
-                }
+                EasyInputMessageParam(
+                    role="system",
+                    content=system_message,
+                )
             )
 
         llm_input += [
@@ -156,11 +225,32 @@ class OpenAILLM(LLM, StructuredOutputLLM):
             temperature,
         )
 
+        tools = (
+            [
+                {"type": "function", **tool.get_tool_dict()}
+                for tool in tool_registry.definitions
+            ]
+            if tool_registry
+            else []
+        )
+
         try:
-            response: Response = self.get_client().responses.create(
+            if schema:
+                return self.get_client().responses.parse(
+                    model=model,
+                    temperature=temperature,
+                    input=llm_input,
+                    parallel_tool_calls=parallel_tool_calls,
+                    tools=tools,  # type: ignore
+                    text_format=schema,
+                )
+
+            return self.get_client().responses.create(  # type: ignore
                 model=model,
                 temperature=temperature,
                 input=llm_input,
+                parallel_tool_calls=parallel_tool_calls,
+                tools=tools,
                 text=text,  # type: ignore
             )
         except openai.RateLimitError as error:
@@ -176,12 +266,10 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         except openai.PermissionDeniedError as error:
             raise LLMPermissionDeniedError from error
 
-        logger.debug("LLM Returned Response: %s", response)
-
-        return response
-
-    def _to_llm_response(self, *, response: Response) -> LLMResponse:
-        stop_reason: LLMStopReason = LLMStopReason.END_TURN
+    def _to_llm_response(
+        self, *, response: Response | ParsedResponse[Any]
+    ) -> LLMResponse:
+        stop_reason = LLMStopReason.END_TURN
         if incomplete_details := response.incomplete_details:
             match incomplete_details.reason:
                 case "max_output_tokens":
@@ -192,51 +280,105 @@ class OpenAILLM(LLM, StructuredOutputLLM):
         if response.usage is None:
             raise ValueError("Usage metadata is not available")
 
+        prompt_tokens_used = response.usage.input_tokens
+        completion_tokens_used = response.usage.output_tokens
+        cost = self.price_calculator.calculate_price(
+            input_tokens=prompt_tokens_used,
+            output_tokens=completion_tokens_used,
+        )
+
+        tool_calls = []
+        answer = ""
+        for output in response.output:
+            if output.type == "function_call":
+                tool_calls.append(
+                    LLMToolCallRequest(
+                        id=output.call_id,
+                        name=output.name,
+                        arguments=json.loads(output.arguments),
+                    )
+                )
+            elif output.type == "message":
+                for message in output.content:
+                    if message.type == "output_text":
+                        answer += message.text
+
+        if tool_calls:
+            return LLMResponse(
+                llm_model=self.get_model(),
+                answer=answer,
+                prompt_tokens_used=prompt_tokens_used,
+                completion_tokens_used=completion_tokens_used,
+                cost=float(cost),
+                stop_reason=LLMStopReason.TOOL_USE,
+                function_calls=tool_calls,
+            )
+
         return LLMResponse(
             llm_model=self.get_model(),
-            answer=response.output_text,
-            prompt_tokens_used=response.usage.input_tokens,
-            completion_tokens_used=response.usage.output_tokens,
-            cost=self.price_calculator.calculate_price(
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-            ),
+            answer=answer,
+            prompt_tokens_used=prompt_tokens_used,
+            completion_tokens_used=completion_tokens_used,
+            cost=float(cost),
             stop_reason=stop_reason,
         )
 
     def _convert_llm_input_message_to_raw_message(
         self, message: LLMInputMessage
-    ) -> dict[str, Any]:
+    ) -> ResponseInputItemParam:
+        role: Literal["user", "assistant", "system", "developer"]
         match message.role:
             case LLMMessageRole.USER:
                 role = "user"
             case LLMMessageRole.ASSISTANT:
                 role = "assistant"
+            case LLMMessageRole.TOOL_CALL:
+                role = "assistant"
+            case LLMMessageRole.TOOL_OUTPUT:
+                role = "user"
             case _:
-                raise NotImplementedError(
-                    f"{message.role} is not supported for OpenAI"
-                )
-        content: str | list[dict[str, Any]]
-        if isinstance(message.content, str):
-            content = message.content
-        elif isinstance(message.content, LLMInputFile):
-            image = message.content.file
-            content = [
-                {"type": "input_text", "text": message.content.text},
-                {
-                    "type": "input_image",
-                    "image_url": (
-                        f"data:{image.mime_type};base64,{image.base64_data}"
-                    ),
-                },
-            ]
-        else:
-            raise NotImplementedError(f"Unhandled message type: {message}")
+                raise TypeError(f"Unknown role: {message.role}")
 
-        return {
-            "role": role,
-            "content": content,
-        }
+        if isinstance(message.content, str):
+            return EasyInputMessageParam(role=role, content=message.content)
+
+        if isinstance(message.content, LLMInputFile):
+            image = message.content.file
+            return EasyInputMessageParam(
+                role=role,
+                content=[
+                    ResponseInputTextParam(
+                        type="input_text",
+                        text=message.content.text,
+                    ),
+                    ResponseInputImageParam(
+                        detail="auto",
+                        type="input_image",
+                        image_url=(
+                            f"data:{image.mime_type};base64,{image.base64_data_str}"
+                        ),
+                    ),
+                ],
+            )
+
+        if isinstance(message.content, LLMToolCallRequest):
+            tool_call = message.content
+            return ResponseCustomToolCallParam(
+                type="custom_tool_call",
+                call_id=tool_call.id,
+                name=tool_call.name,
+                input=json.dumps(tool_call.arguments),
+            )
+
+        if isinstance(message.content, LLMToolCallResponse):
+            tool_call = message.content.tool_call
+            return ResponseCustomToolCallOutputParam(
+                type="custom_tool_call_output",
+                call_id=tool_call.id,
+                output=message.content.output,
+            )
+
+        raise TypeError(f"Unhandled message type: {message}")
 
 
 class AzureOpenAILLM(OpenAILLM):
@@ -249,12 +391,10 @@ class AzureOpenAILLM(OpenAILLM):
         deployment_name: str,
         token_budget: LLMTokenBudget,
         price_calculator: LLMPriceCalculator,
-        response_cache: LLMResponseCache | None = None,
     ) -> None:
         self.api_version = api_version
         self.endpoint = endpoint
         super().__init__(
-            response_cache=response_cache,
             api_key=api_key,
             model=deployment_name,
             token_budget=token_budget,
@@ -274,16 +414,14 @@ class GPT35TurboLLM(OpenAILLM):
     def __init__(
         self,
         api_key: str,
-        response_cache: LLMResponseCache | None = None,
     ) -> None:
         super().__init__(
-            response_cache=response_cache,
             api_key=api_key,
             model="gpt-3.5-turbo",
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal("0.50"),
-                output_tokens=Decimal("1.50"),
+                input_tokens=0.50,
+                output_tokens=1.50,
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=16_385,
@@ -298,16 +436,35 @@ class GPT4oLLM(OpenAILLM):
         self,
         api_key: str,
         model_suffix: str = "",
-        response_cache: LLMResponseCache | None = None,
     ) -> None:
         super().__init__(
-            response_cache=response_cache,
             model="gpt-4o" + model_suffix,
             api_key=api_key,
             price_calculator=LLMPriceCalculator(
                 tokens=1_000_000,
-                input_tokens=Decimal("5.0"),
-                output_tokens=Decimal("15.0"),
+                input_tokens=5.0,
+                output_tokens=15.0,
+            ),
+            token_budget=LLMTokenBudget(
+                llm_max_token=128_000,
+                max_tokens_for_input=124_00,
+                max_tokens_for_output=4_000,
+            ),
+        )
+
+
+class GPT5Nano(OpenAILLM):
+    def __init__(
+        self,
+        api_key: str,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            model="gpt-5-nano",
+            price_calculator=LLMPriceCalculator(
+                tokens=1_000_000,
+                input_tokens=0.05,
+                output_tokens=0.45,
             ),
             token_budget=LLMTokenBudget(
                 llm_max_token=128_000,

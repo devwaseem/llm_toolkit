@@ -1,0 +1,170 @@
+import re
+from functools import cached_property
+from pathlib import Path
+from typing import Any, Callable
+
+from jinja2 import Environment
+from tenacity import retry, retry_if_exception_type
+from tenacity.wait import wait_exponential
+
+from llm_toolkit.agentic.agents.models import AgentResponse
+from llm_toolkit.agentic.runtime.base import AgentRuntime
+from llm_toolkit.agentic.session.base import AgentSession
+from llm_toolkit.llm.errors import (
+    LLMAPIConnectionError,
+    LLMAPITimeoutError,
+    LLMInternalServerError,
+    LLMRateLimitedError,
+)
+from llm_toolkit.llm.models import (
+    LLM,
+    LLMResponse,
+    LLMToolRegistry,
+    LLMTools,
+)
+from llm_toolkit.tool import LLMTool, ToolKit
+
+_jinja_env = Environment(
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
+
+
+class Agent:
+    def __init__(
+        self,
+        *,
+        llm: LLM,
+        name: str,
+        role: str,
+        tools: list[LLMTool | ToolKit | Callable[..., str]],
+        runtime: AgentRuntime,
+        max_turns: int = 20,
+        additional_instructions: str = "",
+        on_response: Callable[[AgentResponse], None] | None = None,
+    ) -> None:
+        self.llm = llm
+
+        self.name = name
+        self._validate_agent_name()
+
+        self.role = role
+        self.additional_instructions = additional_instructions
+
+        self.max_turns = max_turns
+        self._tools = tools
+        self._tool_registry = LLMToolRegistry()
+        self.on_response = on_response
+
+        for tool in tools:
+            self._tool_registry.add(tool)
+
+        self._runtime = runtime
+        self._runtime.register_agent(agent=self)
+
+    def get_llm_tools(self) -> list[LLMTool]:
+        return self._tool_registry.get_tools()
+
+    def get_system_message_template_path(self) -> Path:
+        return Path(__file__).parent / "prompts" / "agent.txt"
+
+    def get_system_message_template(self) -> str:
+        template_path = self.get_system_message_template_path()
+        return template_path.read_text(encoding="utf-8")
+
+    def get_system_message(
+        self,
+        *,
+        session: AgentSession,
+        additional_context: str | None = None,
+    ) -> str:
+        return _jinja_env.from_string(
+            self.get_system_message_template()
+        ).render(
+            self.get_context_for_system_message(
+                session=session,
+                additional_context=additional_context,
+            )
+        )
+
+    def get_context_for_system_message(
+        self,
+        *,
+        session: AgentSession,  # noqa: ARG002
+        additional_context: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "role": self.role,
+            "additional_context": additional_context,
+            "additional_instructions": self.additional_instructions,
+        }
+
+    def _validate_agent_name(self) -> None:
+        if len(self.name) == 0:
+            raise ValueError("Invalid Agent name, should not be empty")
+        if len(self.name) < 3:
+            raise ValueError(
+                "Invalid Agent name, should be at least 3 characters long"
+            )
+        if len(self.name) > 32:
+            raise ValueError(
+                "Invalid Agent name, should not be longer than 32 characters"
+            )
+        if re.match(r"^[a-zA-Z][a-zA-Z\s\-_]+$", self.name) is None:
+            raise ValueError(
+                "Invalid Agent name, "
+                "only alphabets [a-zA-Z], underscore, hyphens and spaces "
+                "are allowed. Name should start with a alphabet"
+            )
+
+    @cached_property
+    def agent_id(self) -> str:
+        return self.name.replace(" ", "_").lower()
+
+    def get_short_tools_descriptions(self) -> list[tuple[str, str]]:
+        return self._tool_registry.get_short_descriptions()
+
+    @retry(
+        retry=retry_if_exception_type(
+            (
+                LLMInternalServerError,
+                LLMAPIConnectionError,
+                LLMAPITimeoutError,
+            )
+        ),
+        wait=wait_exponential(
+            multiplier=2,
+            max=10,
+            exp_base=2,
+        ),
+    )
+    @retry(
+        retry=retry_if_exception_type((LLMRateLimitedError)),
+        wait=wait_exponential(
+            multiplier=2,
+            max=60,
+            exp_base=2,
+        ),
+    )
+    def run(
+        self,
+        *,
+        session: AgentSession,
+        metadata: dict[str, Any] | None = None,
+        additional_context: str | None = None,
+    ) -> LLMResponse:
+        system_message = self.get_system_message(
+            session=session,
+            additional_context=additional_context,
+        )
+        return self.llm.complete_chat(
+            system_message=system_message,
+            messages=list(session.to_llm_messages()),
+            tools=LLMTools(
+                tools=self.get_llm_tools(),
+                call_automatically=False,
+                parallel_tool_calls=True,
+            ),
+            metadata=metadata,
+        )
