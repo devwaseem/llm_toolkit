@@ -57,10 +57,15 @@ class LLMTool:
     func: Callable[..., str] | None
 
     def __init__(
-        self, *, definition: ToolDef, func: Callable[..., str] | None
+        self,
+        *,
+        definition: ToolDef,
+        display_name: str = "",
+        func: Callable[..., str] | None,
     ) -> None:
         self.definition = definition
         self.func = func
+        self.display_name = display_name
 
     @staticmethod
     def from_callable(func: Callable[..., str]) -> "LLMTool":
@@ -85,7 +90,15 @@ class LLMTool:
         if is_llm_tool and hasattr(func, "__llm_tool_name__"):
             definition.name = cast(str, func.__llm_tool_name__)  # type: ignore[attr-defined]
 
-        return LLMTool(definition=definition, func=func)
+        display_name = ""
+        if is_llm_tool and hasattr(func, "__llm_tool_display_name__"):
+            display_name = cast(str, func.__llm_tool_display_name__)  # type: ignore[attr-defined]
+
+        return LLMTool(
+            definition=definition,
+            display_name=display_name,
+            func=func,
+        )
 
     @property
     def name(self) -> str:
@@ -116,6 +129,7 @@ def llm_tool(
     *,
     name: str = "",
     instructions: str = "",
+    display_name: str = "",
     ignore_params: Set[str] | None = None,
 ) -> Callable[[Callable[P, str]], Callable[P, str]]:
     ignore_params = ignore_params or set()
@@ -143,6 +157,7 @@ def llm_tool(
         tool_def.instructions = instructions
         wrapped_func.__llm_tool_name__ = tool_name  # type: ignore[attr-defined]
         wrapped_func.__llm_tool_def__ = tool_def  # type: ignore[attr-defined]
+        wrapped_func.__llm_tool_display_name__ = display_name  # type: ignore[attr-defined]
         return wrapped_func
 
     return wrapper

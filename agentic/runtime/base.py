@@ -1,4 +1,5 @@
 import importlib
+import json
 import logging
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence, TypedDict
@@ -273,15 +274,30 @@ def handle_tool_event(
     if tool.is_metadata_requested:
         tool_arguments["metadata"] = metadata
 
+    tool_arguments_json = json.dumps(tool_arguments, indent=2)
+
+    if tool.display_name:
+        with session_repository.select_for_update(session_id=session.id) as s:
+            s.running_tools.add(tool.display_name)
+
+    logger.info(
+        "Session[%s]: Tool[%s{%s}]: Running with params: %s",
+        session.id,
+        tool.name,
+        tool.display_name,
+        tool_arguments_json,
+    )
+
     try:
         result = tool.func(**tool_arguments)
     except Exception:
         # Catch any unhandled exceptions raised by the tool function
         # and return a generic error message
         logger.exception(
-            "Session[%s]: Tool[%s]: Error executing tool",
+            "Session[%s]: Tool[%s{%s}]: Error executing tool",
             session.id,
             tool.name,
+            tool.display_name,
             stack_info=False,
         )
         result = "An error occurred while executing the tool"
@@ -290,17 +306,29 @@ def handle_tool_event(
         tool_call=tool_request,
         output=result,
     )
+
     logger.debug(
-        "Session[%s]: Tool[%s]: %s",
+        "Session[%s]: Tool[%s{%s}]: %s",
         session.id,
         tool.name,
-        llm_tool_call_response,
+        tool.display_name,
+        llm_tool_call_response.model_dump_json(indent=2),
+    )
+
+    logger.info(
+        "Session[%s]: Tool[%s{%s}]: Run Complete with arguments %s",
+        session.id,
+        tool.name,
+        tool.display_name,
+        tool_arguments_json,
     )
 
     with session_repository.select_for_update(session_id=session.id) as s:
         s.add_tool_call_response(
             response=llm_tool_call_response,
         )
+        if tool.display_name in s.running_tools:
+            s.running_tools.remove(tool.display_name)
 
     scheduler.schedule_agent_event(
         session_id=session.id,

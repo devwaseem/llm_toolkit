@@ -18,6 +18,7 @@ class DjangoAgentSession(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     transaction_stack = models.JSONField(default=list)
     conversation_history = models.JSONField(default=list)
+    running_tools = models.JSONField(default=list)
 
     class Meta:
         db_table = "agent_session"
@@ -43,6 +44,7 @@ class DjangoAgentSession(models.Model):
             LLMInputMessage.model_validate(m)
             for m in self.conversation_history
         ]
+        session.running_tools = set(self.running_tools)
         return session
 
     def apply(self, session: AgentSession) -> None:
@@ -58,3 +60,4 @@ class DjangoAgentSession(models.Model):
         self.conversation_history = [
             m.model_dump(mode="json") for m in session.conversation_history
         ]
+        self.running_tools = list(session.running_tools)

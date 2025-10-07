@@ -40,6 +40,7 @@ class AgentSession:
     transaction_stack: list[AgentSessionTransaction]
     conversation_history: list[LLMInputMessage]
     agent_context: str
+    running_tools: set[str]
 
     class NotFoundError(Exception):
         pass
@@ -55,6 +56,7 @@ class AgentSession:
         self.reply_to = reply_to
         self.transaction_stack = []
         self.conversation_history = []
+        self.running_tools = set()
         self.agent_context = ""
 
     @property
