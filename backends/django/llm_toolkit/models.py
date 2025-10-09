@@ -1,11 +1,11 @@
 from django.db import models
 
 from llm_toolkit.agentic.session.base import (
+    AgentMessage,
     AgentSession,
     AgentSessionReply,
     AgentSessionTransaction,
 )
-from llm_toolkit.llm.models import LLMInputMessage
 
 
 class DjangoAgentSession(models.Model):
@@ -29,7 +29,9 @@ class DjangoAgentSession(models.Model):
     def to_agent_session(self) -> AgentSession:
         reply_to = None
         if self.reply_to:
-            reply_to = AgentSessionReply.model_validate(self.reply_to)
+            reply_to = AgentSessionReply.model_validate(
+                self.reply_to,
+            )
 
         session = AgentSession(
             session_id=str(self.id),
@@ -41,8 +43,7 @@ class DjangoAgentSession(models.Model):
             for m in self.transaction_stack
         ]
         session.conversation_history = [
-            LLMInputMessage.model_validate(m)
-            for m in self.conversation_history
+            AgentMessage.model_validate(m) for m in self.conversation_history
         ]
         session.running_tools = set(self.running_tools)
         return session

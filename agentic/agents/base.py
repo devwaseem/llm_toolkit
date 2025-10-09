@@ -160,7 +160,7 @@ class Agent:
         )
         return self.llm.complete_chat(
             system_message=system_message,
-            messages=list(session.to_llm_messages()),
+            messages=[m.message for m in session.to_agent_messages()],
             tools=LLMTools(
                 tools=self.get_llm_tools(),
                 call_automatically=False,

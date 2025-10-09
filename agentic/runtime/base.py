@@ -347,7 +347,7 @@ def handle_agent_event(
     metadata: dict[str, Any] | None = None,
 ) -> None:
     with session_repository.select_for_update(session_id=session.id) as s:
-        pending_tool_calls = s.get_pending_tool_calls()
+        pending_tool_calls = s.get_pending_tool_calls_count()
         if pending_tool_calls > 0:
             logger.info(
                 "Session[%s]: Has %s pending tool calls, waiting...",
@@ -419,6 +419,7 @@ def handle_agent_event(
                         output=llm_response.answer,
                         tool_call=session.reply_to.tool_request,
                     ),
+                    from_session_id=session.id,
                 )
 
             scheduler.schedule_agent_event(
