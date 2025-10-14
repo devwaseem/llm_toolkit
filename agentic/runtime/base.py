@@ -68,9 +68,9 @@ _INTRO_TEMPLATE = """
 
 [bold magenta][Agents][/]
 {% for r in registry %}
-[magenta]• {{ r.agent.name }}[/]
+[magenta]└ {{ r.agent.name }}[/]
     {% for tool in r['tools'].values() %}
-    [cyan]• {{ tool.name }}[/]: [magenta]{{ tool.definition.short_description }}[/]
+    [cyan]└ {{ tool.name }}[/]: [magenta]{{ tool.definition.short_description }}[/]
     {% endfor %}
 {% else %}
 [bold red]No Agent was registered[/]
