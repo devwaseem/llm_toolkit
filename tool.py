@@ -1,13 +1,20 @@
 import functools
 import inspect
+import types
+from enum import StrEnum
 from typing import (
     Any,
     Callable,
+    Literal,
+    NamedTuple,
     ParamSpec,
     Set,
     TypeAliasType,
     TypeVar,
+    Union,
     cast,
+    get_args,
+    get_origin,
 )
 
 from pydantic import BaseModel, ConfigDict
@@ -163,6 +170,12 @@ def llm_tool(
     return wrapper
 
 
+class _ResolvedAnnotation(NamedTuple):
+    param_type: str
+    schema_props: dict[str, Any]
+    is_optional: bool
+
+
 def func2tool(
     func: Callable[..., Any],
     ignore_params: Set[str] | None = None,
@@ -215,21 +228,22 @@ def func2tool(
         if name in ignore_params:
             continue
 
-        try:
-            param_type = type_map.get(param.annotation, "string")
-        except KeyError as exc:
-            raise KeyError(
-                (
-                    f"Unknown type annotation {param.annotation} "
-                    f"for parameter {param.name}: {exc!s}"
-                )
-            ) from exc
+        param_type, schema_props, is_optional = _resolve_annotation(
+            param.annotation, type_map
+        )
 
-        parameters.properties[name] = {
+        properties: dict[str, Property] = {
             "type": param_type,
             "description": param_descriptions.get(name, "") or "",
         }
-        if param.default == inspect.Parameter.empty:
+        properties.update(schema_props)
+
+        # if param.default:
+        #     properties["default"] = param.default
+
+        parameters.properties[name] = properties
+
+        if not is_optional and param.default == inspect.Parameter.empty:
             parameters.required.append(name)
 
     function_name = func.__name__
@@ -242,6 +256,64 @@ def func2tool(
         long_description=parsed_doc.long_description or "",
         instructions="",
         parameters=parameters,
+    )
+
+
+def _resolve_annotation(
+    annotation: Any, type_map: dict[type, str]
+) -> _ResolvedAnnotation:
+    param_type = "string"
+    schema_props: dict[str, Any] = {}
+
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+
+    is_optional = False
+    if origin is types.UnionType or origin is Union:
+        is_optional = type(None) in args
+        non_none_type = [a for a in args if a is not type(None)]
+        return _resolve_annotation(non_none_type[0], type_map)
+
+    if origin is Literal:
+        param_type = "string"
+        schema_props["enum"] = list(args)
+        first_type = type(args[0])
+
+        if first_type not in (str, int, float):
+            raise TypeError(
+                "Only Literal with str, int, float types are supported"
+            )
+
+        count = 1
+        for arg in args[1:]:
+            if type(arg) is first_type:
+                count += 1
+
+        if count != len(args):
+            raise TypeError("Literal should contain same type")
+
+        if isinstance(first_type, (int, float)):
+            param_type = "integer"  # type: ignore
+
+        return _ResolvedAnnotation(
+            param_type=param_type,
+            schema_props=schema_props,
+            is_optional=is_optional,
+        )
+
+    if inspect.isclass(annotation) and issubclass(annotation, StrEnum):
+        schema_props["enum"] = [m.value for m in annotation]
+        return _ResolvedAnnotation(
+            param_type="string",
+            schema_props=schema_props,
+            is_optional=is_optional,
+        )
+
+    param_type = type_map.get(annotation, "string")
+    return _ResolvedAnnotation(
+        param_type=param_type,
+        schema_props=schema_props,
+        is_optional=is_optional,
     )
 
 
