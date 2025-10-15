@@ -5,7 +5,6 @@ from llm_toolkit.agentic.agents.base import Agent, ToolContext
 from llm_toolkit.agentic.session.base import AgentSession, AgentSessionReply
 from llm_toolkit.llm.models import (
     LLM,
-    LLMToolCallResponse,
 )
 from llm_toolkit.tool import LLMTool, ToolKit, llm_tool
 
@@ -133,46 +132,6 @@ class SupervisorAgent(Agent):
             metadata=context.metadata,
         )
         return "Delegated task to team member"
-
-    @llm_tool(
-        display_name="Thinking",
-        instructions=(
-            "Use this tool to set the agent's thinking."
-            "This will be used for the user to know what the agent is thinking."
-            "Do not include any internal knowledge here, as this is user facing."
-        ),
-        ignore_params={"context"},
-    )
-    def set_internal_thoughts(
-        self,
-        thoughts: str,  # noqa
-        context: ToolContext,
-    ) -> str:
-        """Set the thoughts of the agent"""
-        runner = context.runner
-        session = context.session
-        tool_call_request = context.tool_call_request
-
-        with runner.session_repository.select_for_update(
-            session_id=session.id
-        ) as s:
-            s.current_thoughts = tool_call_request.arguments["thoughts"]
-            s.add_tool_call_request(request=tool_call_request)
-            s.add_tool_call_response(
-                from_session_id=session.id,
-                response=LLMToolCallResponse(
-                    tool_call=tool_call_request,
-                    output="OK",
-                ),
-            )
-
-        runner.scheduler.schedule_agent_event(
-            session_id=session.id,
-            addtional_context=context.additional_context,
-            metadata=context.metadata,
-        )
-
-        return ""
 
 
 class SubAgent(Agent):
