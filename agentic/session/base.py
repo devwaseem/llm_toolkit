@@ -57,9 +57,9 @@ class AgentSessionTransaction(BaseModel):
         pending_tools = set()
         for tool_call in self.tool_stack:
             if isinstance(tool_call, AgentSessionTransactionToolRequest):
-                pending_tools.add(tool_call.tool_request.name)
+                pending_tools.add(tool_call.tool_request.id)
             elif isinstance(tool_call, AgentSessionTransactionToolResponse):
-                pending_tools.remove(tool_call.tool_response.tool_call.name)
+                pending_tools.discard(tool_call.tool_response.tool_call.id)
         return pending_tools
 
     def get_sorted_tool_stack(
@@ -222,26 +222,30 @@ class AgentSession:
         self._last_transaction.answer = None
 
     def to_agent_messages(self) -> Generator[AgentMessage, None, None]:
-        for transaction in self.transaction_stack:
+        total_transactions = len(self.transaction_stack)
+        for index, transaction in enumerate(self.transaction_stack):
+            is_last_transaction = index == total_transactions - 1
+
             yield AgentMessage(
                 created_at=transaction.queried_at,
                 message=LLMInputMessage.from_human(content=transaction.query),
             )
-            for tool in transaction.get_sorted_tool_stack():
-                if isinstance(tool, AgentSessionTransactionToolRequest):
-                    yield AgentMessage(
-                        created_at=tool.created_at,
-                        message=LLMInputMessage.from_tool_call_request(
-                            tool_call=tool.tool_request,
-                        ),
-                    )
-                if isinstance(tool, AgentSessionTransactionToolResponse):
-                    yield AgentMessage(
-                        created_at=tool.created_at,
-                        message=LLMInputMessage.from_tool_response(
-                            response=tool.tool_response,
-                        ),
-                    )
+            if is_last_transaction:
+                for tool in transaction.get_sorted_tool_stack():
+                    if isinstance(tool, AgentSessionTransactionToolRequest):
+                        yield AgentMessage(
+                            created_at=tool.created_at,
+                            message=LLMInputMessage.from_tool_call_request(
+                                tool_call=tool.tool_request,
+                            ),
+                        )
+                    if isinstance(tool, AgentSessionTransactionToolResponse):
+                        yield AgentMessage(
+                            created_at=tool.created_at,
+                            message=LLMInputMessage.from_tool_response(
+                                response=tool.tool_response,
+                            ),
+                        )
 
             if answer := transaction.answer:
                 assert transaction.answered_at is not None  # nosec
