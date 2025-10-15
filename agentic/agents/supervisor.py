@@ -1,14 +1,11 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast, override
 
-from llm_toolkit.agentic.agents.base import Agent
-from llm_toolkit.agentic.runner import AgentRunner
+from llm_toolkit.agentic.agents.base import Agent, ToolContext
 from llm_toolkit.agentic.session.base import AgentSession, AgentSessionReply
 from llm_toolkit.llm.models import (
     LLM,
-    LLMResponse,
-    LLMStopReason,
-    LLMToolCallRequest,
+    LLMToolCallResponse,
 )
 from llm_toolkit.tool import LLMTool, ToolKit, llm_tool
 
@@ -77,6 +74,13 @@ class SupervisorAgent(Agent):
         ]
         return context
 
+    @override
+    def get_internal_tools(self) -> list[Callable[..., str]]:
+        return [
+            *super().get_internal_tools(),
+            self.delegate_to_agent,
+        ]
+
     @llm_tool(
         instructions=(
             "Always pass additional information to provide "
@@ -84,10 +88,7 @@ class SupervisorAgent(Agent):
             "since they start from clean slate."
         ),
         ignore_params={
-            "from_session_id",
-            "tool_request",
-            "metadata",
-            "runner",
+            "context",
         },
     )
     def delegate_to_agent(
@@ -95,10 +96,7 @@ class SupervisorAgent(Agent):
         agent_id: str,
         task: str,
         additional_information: str,
-        runner: AgentRunner,
-        from_session_id: str,
-        tool_request: LLMToolCallRequest,
-        metadata: dict[str, Any] | None = None,
+        context: ToolContext,
     ) -> str:
         """
         Delegate a task to a team member
@@ -110,12 +108,20 @@ class SupervisorAgent(Agent):
             the team member doesn't know the context of the task and why it
             was initiated.
         """
+        from_session = context.session
+        runner = context.runner
+
+        with runner.session_repository.select_for_update(
+            session_id=from_session.id
+        ) as s:
+            s.add_tool_call_request(request=context.tool_call_request)
+
         agent = self.team[agent_id]
-        session = runner.session_repository.create_session(
+        delegate_session = runner.session_repository.create_session(
             agent_id=agent.agent_id,
             reply_to=AgentSessionReply(
-                session_id=from_session_id,
-                tool_request=tool_request,
+                session_id=from_session.id,
+                tool_request=context.tool_call_request,
             ),
         )
         runner.query_agent(
@@ -123,51 +129,50 @@ class SupervisorAgent(Agent):
                 f"Task: {task}, "
                 f"additional_information: {additional_information}"
             ),
-            session_id=session.id,
-            metadata=metadata,
+            session_id=delegate_session.id,
+            metadata=context.metadata,
         )
         return "Delegated task to team member"
 
-    @override
-    def run(
+    @llm_tool(
+        display_name="Thinking",
+        instructions=(
+            "Use this tool to set the agent's thinking."
+            "This will be used for the user to know what the agent is thinking."
+            "Do not include any internal knowledge here, as this is user facing."
+        ),
+        ignore_params={"context"},
+    )
+    def set_internal_thoughts(
         self,
-        *,
-        runner: AgentRunner,
-        session: AgentSession,
-        metadata: dict[str, Any] | None = None,
-        additional_context: str | None = None,
-    ) -> LLMResponse:
-        llm_response = super().run(
-            runner=runner,
-            session=session,
-            metadata=metadata,
-            additional_context=additional_context,
+        thoughts: str,  # noqa
+        context: ToolContext,
+    ) -> str:
+        """Set the thoughts of the agent"""
+        runner = context.runner
+        session = context.session
+        tool_call_request = context.tool_call_request
+
+        with runner.session_repository.select_for_update(
+            session_id=session.id
+        ) as s:
+            s.current_thoughts = tool_call_request.arguments["thoughts"]
+            s.add_tool_call_request(request=tool_call_request)
+            s.add_tool_call_response(
+                from_session_id=session.id,
+                response=LLMToolCallResponse(
+                    tool_call=tool_call_request,
+                    output="OK",
+                ),
+            )
+
+        runner.scheduler.schedule_agent_event(
+            session_id=session.id,
+            addtional_context=context.additional_context,
+            metadata=context.metadata,
         )
-        if llm_response.stop_reason == LLMStopReason.TOOL_USE and (
-            llm_response.function_calls
-        ):
-            function_calls = []
-            delegate_tool_name = LLMTool.from_callable(
-                self.delegate_to_agent
-            ).name
-            for tool_call_request in llm_response.function_calls:
-                if tool_call_request.name == delegate_tool_name:
-                    self.delegate_to_agent(
-                        **tool_call_request.arguments,
-                        from_session_id=session.id,
-                        tool_request=tool_call_request,
-                        metadata=metadata,
-                        runner=runner,
-                    )
-                    session.add_tool_call_request(request=tool_call_request)
-                    runner.session_repository.save(session=session)
-                    continue
 
-                function_calls.append(tool_call_request)
-            llm_response.function_calls = function_calls
-            return llm_response
-
-        return llm_response
+        return ""
 
 
 class SubAgent(Agent):

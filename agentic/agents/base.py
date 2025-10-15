@@ -1,7 +1,7 @@
 import re
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, TypedDict
 
 from jinja2 import Environment
 from tenacity import retry, retry_if_exception_type
@@ -18,6 +18,8 @@ from llm_toolkit.llm.errors import (
 from llm_toolkit.llm.models import (
     LLM,
     LLMResponse,
+    LLMStopReason,
+    LLMToolCallRequest,
     LLMToolRegistry,
     LLMTools,
 )
@@ -31,6 +33,19 @@ _jinja_env = Environment(
     trim_blocks=True,
     lstrip_blocks=True,
 )
+
+
+class ToolContext(NamedTuple):
+    tool_call_request: LLMToolCallRequest
+    session: AgentSession
+    runner: AgentRunner
+    additional_context: str | None
+    metadata: dict[str, Any] | None
+
+
+class InternalToolMap(TypedDict):
+    tool: LLMTool
+    func: Callable[..., str]
 
 
 class Agent:
@@ -56,6 +71,18 @@ class Agent:
 
         for tool in tools:
             self._tool_registry.add(tool)
+
+        self._internal_tools: dict[str, InternalToolMap] = {}
+        for callable_func in self.get_internal_tools():
+            llm_tool = LLMTool.from_callable(callable_func)
+            self._internal_tools[llm_tool.name] = {
+                "tool": llm_tool,
+                "func": callable_func,
+            }
+            self._tool_registry.add(llm_tool)
+
+    def get_internal_tools(self) -> list[Callable[..., str]]:
+        return []
 
     def get_llm_tools(self) -> list[LLMTool]:
         return self._tool_registry.get_tools()
@@ -145,7 +172,7 @@ class Agent:
     def run(
         self,
         *,
-        runner: AgentRunner,  # noqa
+        runner: AgentRunner,
         session: AgentSession,
         metadata: dict[str, Any] | None = None,
         additional_context: str | None = None,
@@ -154,7 +181,7 @@ class Agent:
             session=session,
             additional_context=additional_context,
         )
-        return self.llm.complete_chat(
+        llm_response = self.llm.complete_chat(
             system_message=system_message,
             messages=[m.message for m in session.to_agent_messages()],
             tools=LLMTools(
@@ -164,3 +191,26 @@ class Agent:
             ),
             metadata=metadata,
         )
+        if llm_response.stop_reason == LLMStopReason.TOOL_USE and (
+            llm_response.function_calls
+        ):
+            function_calls = []
+            for tool_call_request in llm_response.function_calls:
+                if tool_call_request.name in self._internal_tools:
+                    context = ToolContext(
+                        tool_call_request=tool_call_request,
+                        session=session,
+                        runner=runner,
+                        additional_context=additional_context,
+                        metadata=metadata,
+                    )
+                    self._internal_tools[tool_call_request.name]["func"](
+                        **tool_call_request.arguments,
+                        context=context,
+                    )
+                    continue
+
+                function_calls.append(tool_call_request)
+            llm_response.function_calls = function_calls
+
+        return llm_response

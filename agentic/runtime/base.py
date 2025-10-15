@@ -341,7 +341,6 @@ def handle_event_gracefully(
         with session_repository.select_for_update(
             session_id=event.session_id
         ) as s:
-            s.rollback_transaction()
             s.add_ai_answer(
                 answer=(
                     "I'm sorry, an issue occurred "
