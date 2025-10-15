@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Any, Callable, cast, override
+from typing import TYPE_CHECKING, Any, Callable, cast, override
 
 from llm_toolkit.agentic.agents.base import Agent
-from llm_toolkit.agentic.runtime.base import AgentRuntime
+from llm_toolkit.agentic.runner import AgentRunner
 from llm_toolkit.agentic.session.base import AgentSession, AgentSessionReply
 from llm_toolkit.llm.models import (
     LLM,
@@ -11,6 +11,9 @@ from llm_toolkit.llm.models import (
     LLMToolCallRequest,
 )
 from llm_toolkit.tool import LLMTool, ToolKit, llm_tool
+
+if TYPE_CHECKING:
+    pass
 
 
 class SupervisorAgent(Agent):
@@ -22,8 +25,6 @@ class SupervisorAgent(Agent):
         role: str,
         tools: list[LLMTool | ToolKit | Callable[..., str]],
         team: list[Agent],
-        runtime: AgentRuntime,
-        max_turns: int = 20,
         additional_instructions: str = "",
     ) -> None:
         self.team = {t.agent_id: t for t in team}
@@ -46,14 +47,9 @@ class SupervisorAgent(Agent):
             llm=llm,
             name=name,
             role=role,
-            max_turns=max_turns,
             tools=_tools,
-            runtime=runtime,
             additional_instructions=additional_instructions,
         )
-
-        for agent in team:
-            self._runtime.register_agent(agent=agent)
 
     @override
     def get_system_message_template_path(self) -> Path:
@@ -87,13 +83,19 @@ class SupervisorAgent(Agent):
             "the context of task to the team member, "
             "since they start from clean slate."
         ),
-        ignore_params={"from_session_id", "tool_request", "metadata"},
+        ignore_params={
+            "from_session_id",
+            "tool_request",
+            "metadata",
+            "runner",
+        },
     )
     def delegate_to_agent(
         self,
         agent_id: str,
         task: str,
         additional_information: str,
+        runner: AgentRunner,
         from_session_id: str,
         tool_request: LLMToolCallRequest,
         metadata: dict[str, Any] | None = None,
@@ -109,14 +111,14 @@ class SupervisorAgent(Agent):
             was initiated.
         """
         agent = self.team[agent_id]
-        session = self._runtime.session_repository.create_session(
+        session = runner.session_repository.create_session(
             agent_id=agent.agent_id,
             reply_to=AgentSessionReply(
                 session_id=from_session_id,
                 tool_request=tool_request,
             ),
         )
-        self._runtime.query_agent(
+        runner.query_agent(
             query=(
                 f"Task: {task}, "
                 f"additional_information: {additional_information}"
@@ -130,11 +132,13 @@ class SupervisorAgent(Agent):
     def run(
         self,
         *,
+        runner: AgentRunner,
         session: AgentSession,
         metadata: dict[str, Any] | None = None,
         additional_context: str | None = None,
     ) -> LLMResponse:
         llm_response = super().run(
+            runner=runner,
             session=session,
             metadata=metadata,
             additional_context=additional_context,
@@ -153,10 +157,12 @@ class SupervisorAgent(Agent):
                         from_session_id=session.id,
                         tool_request=tool_call_request,
                         metadata=metadata,
+                        runner=runner,
                     )
                     session.add_tool_call_request(request=tool_call_request)
-                    self._runtime.session_repository.save(session=session)
+                    runner.session_repository.save(session=session)
                     continue
+
                 function_calls.append(tool_call_request)
             llm_response.function_calls = function_calls
             return llm_response

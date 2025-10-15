@@ -1,8 +1,9 @@
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Generator
+from typing import Any, Generator
 from uuid import uuid4
 
+import orjson
 from pydantic import BaseModel
 
 from llm_toolkit.agentic.session.exceptions import (
@@ -121,6 +122,12 @@ class AgentSession:
             raise TransactionNotStartedError
 
         return self.transaction_stack[-1]
+
+    def get_last_ai_answer(self) -> str | None:
+        if self._last_transaction.answer:
+            return self._last_transaction.answer
+
+        return None
 
     def get_pending_tool_calls_count(self) -> int:
         return self._last_transaction.pending_tool_calls_count
@@ -242,3 +249,67 @@ class AgentSession:
                     created_at=transaction.answered_at,
                     message=LLMInputMessage.from_ai(answer),
                 )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "reply_to": self.reply_to.model_dump(mode="json")
+            if self.reply_to
+            else None,
+            "transaction_stack": [
+                transaction.model_dump(mode="json")
+                for transaction in self.transaction_stack
+            ],
+            "conversation_history": [
+                message.model_dump(mode="json")
+                for message in self.conversation_history
+            ],
+            "running_tools": list(self.running_tools),
+            "agent_context": self.agent_context,
+        }
+
+    def __dict__(self) -> dict[str, Any]:  # type: ignore
+        return self.to_dict()
+
+    def to_json(self) -> str:
+        return orjson.dumps(self.to_dict()).decode()
+
+    def __getstate__(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.id = state["id"]
+        self.agent_id = state["agent_id"]
+        self.reply_to = (
+            AgentSessionReply.model_validate(state["reply_to"])
+            if state["reply_to"]
+            else None
+        )
+        self.transaction_stack = [
+            AgentSessionTransaction.model_validate(transaction)
+            for transaction in state["transaction_stack"]
+        ]
+        self.conversation_history = [
+            AgentMessage.model_validate(message)
+            for message in state["conversation_history"]
+        ]
+        self.running_tools = set(state["running_tools"])
+        self.agent_context = state["agent_context"]
+
+    @staticmethod
+    def from_dict(state: dict[str, Any]) -> "AgentSession":
+        session_id = state["id"]
+        agent_id = state["agent_id"]
+        reply_to = (
+            AgentSessionReply.model_validate(state["reply_to"])
+            if state["reply_to"]
+            else None
+        )
+        session = AgentSession(
+            session_id=session_id,
+            agent_id=agent_id,
+            reply_to=reply_to,
+        )
+        session.__setstate__(state)
+        return session

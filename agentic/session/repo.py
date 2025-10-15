@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import Generator, override
+from typing import Any, Generator, override
 from uuid import uuid4
+
+import orjson
+import redis
 
 from llm_toolkit.agentic.session.base import AgentSession, AgentSessionReply
 
@@ -36,10 +39,15 @@ class AgentSessionRepository(ABC):
         yield session
         self.save(session=session)
 
+    @abstractmethod
+    def get_init_kwargs(self) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class InMemoryAgentSessionRepository(AgentSessionRepository):
     def __init__(self) -> None:
         self.sessions: dict[str, AgentSession] = {}
+        self.next_session_id = 0
 
     @override
     def get_display_name(self) -> str:
@@ -63,9 +71,79 @@ class InMemoryAgentSessionRepository(AgentSessionRepository):
         reply_to: AgentSessionReply | None = None,
     ) -> AgentSession:
         session = AgentSession(
-            session_id=uuid4().hex,
+            session_id=str(self.next_session_id),
+            agent_id=agent_id,
+            reply_to=reply_to,
+        )
+        self.save(session=session)
+        self.next_session_id += 1
+        return session
+
+    @override
+    def get_init_kwargs(self) -> dict[str, Any]:
+        return {}
+
+
+class RedisAgentSessionRepository(AgentSessionRepository):
+    def __init__(
+        self,
+        *,
+        host: str = "localhost",
+        port: int = 6379,
+        db: int = 0,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.db = db
+        self.redis = redis.Redis(
+            host=self.host,
+            port=self.port,
+            db=self.db,
+            decode_responses=True,
+        )
+
+    @override
+    def get_display_name(self) -> str:
+        return f"redis://{self.host}:{self.port}/{self.db}"
+
+    def get_computed_id(self, session_id: str) -> str:
+        return f"agentic:session:{session_id}"
+
+    @override
+    def get(self, *, session_id: str) -> AgentSession:
+        session_json = self.redis.get(
+            self.get_computed_id(session_id),
+        )
+        if not session_json:
+            raise AgentSession.NotFoundError(f"Session {session_id} not found")
+        return AgentSession.from_dict(orjson.loads(session_json))  # type: ignore
+
+    @override
+    def save(self, *, session: AgentSession) -> None:
+        self.redis.set(
+            self.get_computed_id(session.id),
+            orjson.dumps(session.to_dict()),
+        )
+
+    @override
+    def create_session(
+        self,
+        *,
+        agent_id: str,
+        reply_to: AgentSessionReply | None = None,
+    ) -> AgentSession:
+        session = AgentSession(
+            session_id=str(uuid4()),
             agent_id=agent_id,
             reply_to=reply_to,
         )
         self.save(session=session)
         return session
+
+    @override
+    def get_init_kwargs(self) -> dict[str, Any]:
+        return {
+            "host": self.host,
+            "port": self.port,
+            "db": self.db,
+        }

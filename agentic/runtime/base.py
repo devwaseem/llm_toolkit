@@ -2,21 +2,31 @@ import importlib
 import json
 import logging
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Literal,
+    Sequence,
+    TypedDict,
+    cast,
+)
 
 from gevent.pool import Pool as GeventPool
 from jinja2 import Environment
 from rich.console import Console
-from rich.logging import RichHandler
 
-from llm_toolkit.agentic.agents.models import AgentResponse
+from llm_toolkit.agentic.runner import AgentRunner
 from llm_toolkit.agentic.runtime.broker import (
     AgentRuntimeTaskBroker,
     InMemoryAgentRuntimeTaskBroker,
 )
 from llm_toolkit.agentic.runtime.event import AgentRuntimeEvent
 from llm_toolkit.agentic.session.base import AgentSession
-from llm_toolkit.agentic.session.repo import AgentSessionRepository
+from llm_toolkit.agentic.session.repo import (
+    AgentSessionRepository,
+    InMemoryAgentSessionRepository,
+)
 from llm_toolkit.llm.models import (
     LLMStopReason,
     LLMToolCallRequest,
@@ -24,17 +34,6 @@ from llm_toolkit.llm.models import (
 )
 from llm_toolkit.tool import LLMTool
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[
-        RichHandler(
-            rich_tracebacks=True,
-            show_path=False,
-        )
-    ],
-)
 logger = logging.getLogger("Agent Runtime")
 
 if TYPE_CHECKING:
@@ -58,24 +57,86 @@ _jinja2 = Environment(
 )
 
 _INTRO_TEMPLATE = """
-[bold green]Agent Runtime
--------------[/]
-[bold magenta][Config][/]
-> Queues: {{queues}}
-> Concurrency: {{ concurrency}}
-> Broker: {{ broker }}
-> Session Repository: {{ session_repository }}
+===================================================================
+>> MULTI AGENT RUNTIME <<
+===================================================================
 
-[bold magenta][Agents][/]
-{% for r in registry %}
-[magenta]└ {{ r.agent.name }}[/]
-    {% for tool in r['tools'].values() %}
-    [cyan]└ {{ tool.name }}[/]: [magenta]{{ tool.definition.short_description }}[/]
+█ CONFIG
+───────────────────────────────────────────────────────────────────
+├─ Queues             : {{queues}}
+├─ Concurrency        : {{ concurrency}}
+├─ Broker             : {{ broker }}
+└─ Session Repository : {{ session_repository }}
+
+█ AGENT INVENTORY ({{ agents_count }})
+───────────────────────────────────────────────────────────────────
+{% for i in agents %}
+[magenta]► {% if i.is_supervisor %} 👑 {% endif %}{{ i.name }} [/]
+  └ Role: {{ i.role }}
+{% if i.team %}
+  └ Team:
+    {% for team_member in i.team %}
+    [cyan]└ {{ team_member }}[/]
     {% endfor %}
+{% endif %}
+{% if i.tools %}
+  └ Tools:
+    {% for tool_name, tool_definition in i.tools.items() %}
+    [cyan]└ {{ tool_name }}[/]: [green]{{ tool_definition }}[/]
+    {% endfor %}
+{% endif %}
+
 {% else %}
 [bold red]No Agent was registered[/]
 {% endfor %}
-"""  # noqa
+"""
+
+
+def _render_header(
+    workers: int,
+    pool: str,
+    queues: Sequence[str],
+    broker: str,
+    session_repository: str,
+    registry: list[RuntimeRegistryItem],
+) -> None:
+    from llm_toolkit.agentic.agents.supervisor import SupervisorAgent
+
+    agents: list[dict[str, Any]] = []
+
+    for r in registry:
+        data: dict[str, Any] = {
+            "team": [],
+            "is_supervisor": False,
+        }
+        agent = r["agent"]
+        is_supervisor = isinstance(r["agent"], SupervisorAgent)
+        data["name"] = agent.name
+        data["role"] = agent.role
+        data["is_supervisor"] = is_supervisor
+        data["tools_count"] = len(r["agent"].get_llm_tools())
+        data["tools"] = {
+            tool.name: tool.definition.short_description
+            for tool in r["agent"].get_llm_tools()
+        }
+        if is_supervisor:
+            supervisor_agent = cast(SupervisorAgent, agent)
+            team_agents = list(supervisor_agent.team.values())
+            for t in team_agents:
+                data["team"].append(t.name)
+        agents.append(data)
+
+    agents.sort(key=lambda a: a["is_supervisor"], reverse=True)
+
+    template = _jinja2.from_string(_INTRO_TEMPLATE).render(
+        concurrency=f"{workers} ({pool})",
+        queues=", ".join(queues),
+        broker=broker,
+        session_repository=session_repository,
+        agents=agents,
+        agents_count=len(agents),
+    )
+    console.print(template)
 
 
 class AgentRuntimeRegistry:
@@ -100,13 +161,33 @@ class AgentRuntimeRegistry:
     def _get_agent_tools(self, agent_id: str) -> dict[str, LLMTool]:
         return self.registry[agent_id]["tools"]
 
+    def register_agent_from_path(self, path: str) -> None:
+        from llm_toolkit.agentic.agents.base import Agent
+
+        paths = path.split(".")
+        module_path = ".".join(paths[:-1])
+        obj_name = paths[-1]
+        module = importlib.import_module(module_path)
+        agent_obj = getattr(module, obj_name)
+        if not isinstance(agent_obj, Agent):
+            raise TypeError(
+                f"Imported object {obj_name} is not an instance of Agent"
+            )
+        self.register_agent(agent=agent_obj)
+
     def register_agent(self, *, agent: "Agent") -> None:
+        from llm_toolkit.agentic.agents.supervisor import SupervisorAgent
+
         self.registry[agent.agent_id] = {
             "agent": agent,
             "tools": {},
         }
         for tool in agent.get_llm_tools():
             self._register_agent_tool(agent=agent, tool=tool)
+
+        if isinstance(agent, SupervisorAgent):
+            for team_member in agent.team.values():
+                self.register_agent(agent=team_member)
 
     def _register_agent_tool(
         self,
@@ -180,6 +261,62 @@ class RuntimeScheduler:
             ),
             queue="default",
         )
+
+
+_GLOBAL_STATE: dict[str, Any] = {}
+
+
+# Only used for multiprocessing.ProcessPoolExecutor because it has
+# different memory space for each worker process
+def _initializer_worker(
+    scheduler_cls: type[RuntimeScheduler],
+    broker_cls: type[AgentRuntimeTaskBroker],
+    broker_kwargs: dict[str, Any],
+    session_repo_cls: type[AgentSessionRepository],
+    session_repo_kwargs: dict[str, Any],
+    agent_paths: list[str],
+    on_setup: Callable[..., None] | None = None,
+) -> None:
+    if on_setup is not None:
+        on_setup()
+
+    broker = broker_cls(**broker_kwargs)
+    scheduler = scheduler_cls(broker=broker)
+
+    session_repository = session_repo_cls(**session_repo_kwargs)
+
+    registry = AgentRuntimeRegistry()
+    for agent_path in agent_paths:
+        registry.register_agent_from_path(path=agent_path)
+
+    global _GLOBAL_STATE
+    _GLOBAL_STATE = {
+        "session_repository": session_repository,
+        "scheduler": scheduler,
+        "registry": registry,
+    }
+
+
+def _handle_process_pool_worker_event(event: AgentRuntimeEvent) -> None:
+    """
+    The target function run by the pool. It retrieves dependencies from
+    the process-local global state.
+    """
+    global _GLOBAL_STATE
+    if not _GLOBAL_STATE:
+        raise RuntimeError("Worker process was not initialized correctly.")
+
+    # Get the dependencies initialized by the worker's initializer
+    session_repository = _GLOBAL_STATE["session_repository"]
+    scheduler = _GLOBAL_STATE["scheduler"]
+    registry = _GLOBAL_STATE["registry"]
+
+    handle_event_gracefully(
+        session_repository=session_repository,
+        scheduler=scheduler,
+        registry=registry,
+        event=event,
+    )
 
 
 def handle_event_gracefully(
@@ -362,6 +499,10 @@ def handle_agent_event(
 
     logger.info("Session[%s]: Agent[%s]: Running...", session.id, agent.name)
     llm_response = agent.run(
+        runner=AgentRunner(
+            session_repository=session_repository,
+            scheduler=scheduler,
+        ),
         session=session,
         additional_context=additional_context,
         metadata=metadata,
@@ -404,12 +545,6 @@ def handle_agent_event(
                 answer=llm_response.answer,
             )
 
-        # Only call on_response if it is meant for the user
-        if agent.on_response and session.reply_to is None:
-            agent.on_response(
-                AgentResponse(session_id=session.id, answer=llm_response)
-            )
-
         if session.reply_to:
             with session_repository.select_for_update(
                 session_id=session.reply_to.session_id
@@ -433,100 +568,114 @@ def handle_agent_event(
 
 
 class AgentRuntime:
-    registry: AgentRuntimeRegistry
-
     def __init__(
         self,
         *,
         broker: AgentRuntimeTaskBroker | None = None,
-        session_repository: AgentSessionRepository,
+        session_repository: AgentSessionRepository | None = None,
+        agent_paths: list[str],
+        on_setup: Callable[..., None] | None = None,
     ) -> None:
-        self.registry = AgentRuntimeRegistry()
-
-        self.broker = broker or InMemoryAgentRuntimeTaskBroker()
+        self.broker = broker if broker else InMemoryAgentRuntimeTaskBroker()
         self.scheduler = RuntimeScheduler(broker=self.broker)
 
-        self.session_repository = session_repository
+        self.session_repository = (
+            session_repository
+            if session_repository
+            else InMemoryAgentSessionRepository()
+        )
         self.should_process_events = True
-
-    def import_modules(self, modules: list[str]) -> None:
-        for module in modules:
-            importlib.import_module(module)
-
-    def register_agent(self, *, agent: "Agent") -> None:
-        self.registry.register_agent(agent=agent)
-
-    def query_agent(
-        self,
-        *,
-        session_id: str,
-        query: str,
-        additional_context: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        with self.session_repository.select_for_update(
-            session_id=session_id
-        ) as session:
-            session.add_user_query(query=query)
-
-        session.validate_run()
-        self.scheduler.schedule_agent_event(
-            session_id=session.id,
-            addtional_context=additional_context,
-            metadata=metadata,
+        self.runner = AgentRunner(
+            session_repository=self.session_repository,
+            scheduler=self.scheduler,
         )
 
-    def run_session(
-        self,
-        *,
-        session_id: str,
-        additional_context: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        self.scheduler.schedule_agent_event(
-            session_id=session_id,
-            addtional_context=additional_context,
-            metadata=metadata,
-        )
+        self.agent_paths = agent_paths
+        self.agent_registry = AgentRuntimeRegistry()
+        for agent_path in agent_paths:
+            self.agent_registry.register_agent_from_path(path=agent_path)
+
+        self.on_setup = on_setup
 
     def start(
         self,
         *,
         queues: Sequence[str],
-        pool: Literal["prefork", "gevent", "threads"],
+        pool: Literal["prefork", "gevent", "threads", "solo"],
         workers: int,
     ) -> None:
-        console.print(
-            _jinja2.from_string(_INTRO_TEMPLATE).render(
-                concurrency=f"{workers} ({pool})",
-                queues=", ".join(queues),
-                broker=self.broker.get_display_name(),
-                session_repository=self.session_repository.get_display_name(),
-                registry=self.registry.registry.values(),
-            )
+        # if self.on_setup:
+        #     self.on_setup()
+
+        _render_header(
+            workers=workers,
+            pool=pool,
+            queues=queues,
+            broker=self.broker.get_display_name(),
+            session_repository=self.session_repository.get_display_name(),
+            registry=list(self.agent_registry.registry.values()),
         )
-        runtime_pool: ProcessPoolExecutor | GeventPool | ThreadPoolExecutor
+
+        runtime_pool: (
+            ProcessPoolExecutor | GeventPool | ThreadPoolExecutor | None
+        )
         match pool:
-            case "prefork":
-                runtime_pool = ProcessPoolExecutor(max_workers=workers)
+            case "solo":
+                runtime_pool = None
             case "gevent":
                 runtime_pool = GeventPool(size=workers)
             case "threads":
                 runtime_pool = ThreadPoolExecutor(max_workers=workers)
+            case "prefork":
+                broker_cls = type(self.broker)
+                broker_kwargs = self.broker.get_init_kwargs()
+                scheduler_cls = type(self.scheduler)
+                session_repo_cls = type(self.session_repository)
+                session_repo_kwargs: dict[str, Any] = (
+                    self.session_repository.get_init_kwargs()
+                )
+                runtime_pool = ProcessPoolExecutor(
+                    max_workers=workers,
+                    initializer=_initializer_worker,  # type: ignore
+                    initargs=(  # type: ignore
+                        scheduler_cls,
+                        broker_cls,
+                        broker_kwargs,
+                        session_repo_cls,
+                        session_repo_kwargs,
+                        self.agent_paths,
+                        self.on_setup,
+                    ),
+                )
+            case _:
+                raise ValueError(f"Invalid pool: {pool}")
 
         logger.info("Listening for events...")
         try:
             while self.should_process_events:
                 event = self.broker.get_event(queues=queues or ["default"])
                 logger.info("Received event: %s", event.model_dump_json())
-                if isinstance(
-                    runtime_pool, (ThreadPoolExecutor, ProcessPoolExecutor)
-                ):
+                if not runtime_pool:
+                    # No pool, run the event in the main thread
+                    handle_event_gracefully(
+                        session_repository=self.session_repository,
+                        scheduler=self.scheduler,
+                        registry=self.agent_registry,
+                        event=event,
+                    )
+                    continue
+
+                if isinstance(runtime_pool, ProcessPoolExecutor):
+                    runtime_pool.submit(
+                        _handle_process_pool_worker_event,
+                        event=event,
+                    )
+                elif isinstance(runtime_pool, ThreadPoolExecutor):
                     runtime_pool.submit(
                         handle_event_gracefully,
                         session_repository=self.session_repository,
                         scheduler=self.scheduler,
-                        registry=self.registry,
+                        registry=self.agent_registry,
                         event=event,
                     )
                 elif isinstance(runtime_pool, GeventPool):
@@ -534,7 +683,7 @@ class AgentRuntime:
                         handle_event_gracefully,
                         session_repository=self.session_repository,
                         scheduler=self.scheduler,
-                        registry=self.registry,
+                        registry=self.agent_registry,
                         event=event,
                     )
         except KeyboardInterrupt:

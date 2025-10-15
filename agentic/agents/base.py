@@ -1,14 +1,13 @@
 import re
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from jinja2 import Environment
 from tenacity import retry, retry_if_exception_type
 from tenacity.wait import wait_exponential
 
-from llm_toolkit.agentic.agents.models import AgentResponse
-from llm_toolkit.agentic.runtime.base import AgentRuntime
+from llm_toolkit.agentic.runner import AgentRunner
 from llm_toolkit.agentic.session.base import AgentSession
 from llm_toolkit.llm.errors import (
     LLMAPIConnectionError,
@@ -24,6 +23,10 @@ from llm_toolkit.llm.models import (
 )
 from llm_toolkit.tool import LLMTool, ToolKit
 
+if TYPE_CHECKING:
+    pass
+
+
 _jinja_env = Environment(
     trim_blocks=True,
     lstrip_blocks=True,
@@ -38,10 +41,7 @@ class Agent:
         name: str,
         role: str,
         tools: list[LLMTool | ToolKit | Callable[..., str]],
-        runtime: AgentRuntime,
-        max_turns: int = 20,
         additional_instructions: str = "",
-        on_response: Callable[[AgentResponse], None] | None = None,
     ) -> None:
         self.llm = llm
 
@@ -51,16 +51,11 @@ class Agent:
         self.role = role
         self.additional_instructions = additional_instructions
 
-        self.max_turns = max_turns
         self._tools = tools
         self._tool_registry = LLMToolRegistry()
-        self.on_response = on_response
 
         for tool in tools:
             self._tool_registry.add(tool)
-
-        self._runtime = runtime
-        self._runtime.register_agent(agent=self)
 
     def get_llm_tools(self) -> list[LLMTool]:
         return self._tool_registry.get_tools()
@@ -150,6 +145,7 @@ class Agent:
     def run(
         self,
         *,
+        runner: AgentRunner,  # noqa
         session: AgentSession,
         metadata: dict[str, Any] | None = None,
         additional_context: str | None = None,

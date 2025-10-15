@@ -1,8 +1,7 @@
 import collections
-import threading
 from abc import ABC, abstractmethod
 from queue import Queue
-from typing import Sequence, override
+from typing import Any, Sequence, override
 
 import redis
 
@@ -22,13 +21,16 @@ class AgentRuntimeTaskBroker(ABC):
     def get_event(self, *, queues: Sequence[str]) -> AgentRuntimeEvent:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_init_kwargs(self) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class InMemoryAgentRuntimeTaskBroker(AgentRuntimeTaskBroker):
     def __init__(self) -> None:
         self.queue_registry = collections.defaultdict[
             str, Queue[AgentRuntimeEvent]
         ](lambda: Queue[AgentRuntimeEvent]())
-        self.cond = threading.Condition()
 
     @override
     def get_display_name(self) -> str:
@@ -36,18 +38,18 @@ class InMemoryAgentRuntimeTaskBroker(AgentRuntimeTaskBroker):
 
     @override
     def notify(self, *, event: AgentRuntimeEvent, queue: str) -> None:
-        with self.cond:
-            self.queue_registry[queue].put(event)
-            self.cond.notify()
+        self.queue_registry[queue].put(event)
+        print(f"{id(self)}:memory: event added")
 
     @override
     def get_event(self, *, queues: Sequence[str]) -> AgentRuntimeEvent:
         while True:
-            with self.cond:
-                for queue_name in queues:
-                    if not self.queue_registry[queue_name].empty():
-                        return self.queue_registry[queue_name].get(block=False)
-                self.cond.wait()
+            for queue_name in queues:
+                if not self.queue_registry[queue_name].empty():
+                    return self.queue_registry[queue_name].get(block=True)
+
+    def get_init_kwargs(self) -> dict[str, Any]:
+        return {}
 
 
 class RedisAgentRuntimeTaskBroker(AgentRuntimeTaskBroker):
@@ -88,17 +90,9 @@ class RedisAgentRuntimeTaskBroker(AgentRuntimeTaskBroker):
                     event[1],  # type: ignore
                 )
 
-    def __getstate__(self) -> object:
-        return (self.host, self.port, self.db)
-
-    def __setstate__(self, state: object) -> None:
-        host, port, db = state  # type: ignore
-        self.host = host  # type: ignore
-        self.port = port  # type: ignore
-        self.db = db  # type: ignore
-        self.redis = redis.Redis(
-            host=self.host,
-            port=self.port,
-            db=self.db,
-            decode_responses=True,
-        )
+    def get_init_kwargs(self) -> dict[str, Any]:
+        return {
+            "host": self.host,
+            "port": self.port,
+            "db": self.db,
+        }
