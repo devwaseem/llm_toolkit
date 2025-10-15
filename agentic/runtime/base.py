@@ -597,35 +597,18 @@ class AgentRuntime:
 
         self.on_setup = on_setup
 
-    def start(
+    def _get_pool(
         self,
-        *,
-        queues: Sequence[str],
         pool: Literal["prefork", "gevent", "threads", "solo"],
         workers: int,
-    ) -> None:
-        # if self.on_setup:
-        #     self.on_setup()
-
-        _render_header(
-            workers=workers,
-            pool=pool,
-            queues=queues,
-            broker=self.broker.get_display_name(),
-            session_repository=self.session_repository.get_display_name(),
-            registry=list(self.agent_registry.registry.values()),
-        )
-
-        runtime_pool: (
-            ProcessPoolExecutor | GeventPool | ThreadPoolExecutor | None
-        )
+    ) -> GeventPool | ThreadPoolExecutor | ProcessPoolExecutor | None:
         match pool:
             case "solo":
-                runtime_pool = None
+                return None
             case "gevent":
-                runtime_pool = GeventPool(size=workers)
+                return GeventPool(size=workers)
             case "threads":
-                runtime_pool = ThreadPoolExecutor(max_workers=workers)
+                return ThreadPoolExecutor(max_workers=workers)
             case "prefork":
                 broker_cls = type(self.broker)
                 broker_kwargs = self.broker.get_init_kwargs()
@@ -634,7 +617,7 @@ class AgentRuntime:
                 session_repo_kwargs: dict[str, Any] = (
                     self.session_repository.get_init_kwargs()
                 )
-                runtime_pool = ProcessPoolExecutor(
+                return ProcessPoolExecutor(
                     max_workers=workers,
                     initializer=_initializer_worker,  # type: ignore
                     initargs=(  # type: ignore
@@ -650,48 +633,78 @@ class AgentRuntime:
             case _:
                 raise ValueError(f"Invalid pool: {pool}")
 
+    def _process_events(
+        self,
+        *,
+        queues: Sequence[str],
+        pool: GeventPool | ThreadPoolExecutor | ProcessPoolExecutor | None,
+    ) -> None:
+        while self.should_process_events:
+            event = self.broker.get_event(queues=queues or ["default"])
+            logger.info("Received event: %s", event.model_dump_json())
+            if not pool:
+                # No pool, run the event in the main thread
+                handle_event_gracefully(
+                    session_repository=self.session_repository,
+                    scheduler=self.scheduler,
+                    registry=self.agent_registry,
+                    event=event,
+                )
+                continue
+
+            if isinstance(pool, ProcessPoolExecutor):
+                pool.submit(
+                    _handle_process_pool_worker_event,
+                    event=event,
+                )
+            elif isinstance(pool, ThreadPoolExecutor):
+                pool.submit(
+                    handle_event_gracefully,
+                    session_repository=self.session_repository,
+                    scheduler=self.scheduler,
+                    registry=self.agent_registry,
+                    event=event,
+                )
+            elif isinstance(pool, GeventPool):
+                pool.spawn(
+                    handle_event_gracefully,
+                    session_repository=self.session_repository,
+                    scheduler=self.scheduler,
+                    registry=self.agent_registry,
+                    event=event,
+                )
+
+    def start(
+        self,
+        *,
+        queues: Sequence[str],
+        pool: Literal["prefork", "gevent", "threads", "solo"],
+        workers: int,
+    ) -> None:
+        if self.on_setup:
+            self.on_setup()
+
+        _render_header(
+            workers=workers,
+            pool=pool,
+            queues=queues,
+            broker=self.broker.get_display_name(),
+            session_repository=self.session_repository.get_display_name(),
+            registry=list(self.agent_registry.registry.values()),
+        )
+
+        runtime_pool = self._get_pool(pool=pool, workers=workers)
         logger.info("Listening for events...")
         try:
-            while self.should_process_events:
-                event = self.broker.get_event(queues=queues or ["default"])
-                logger.info("Received event: %s", event.model_dump_json())
-                if not runtime_pool:
-                    # No pool, run the event in the main thread
-                    handle_event_gracefully(
-                        session_repository=self.session_repository,
-                        scheduler=self.scheduler,
-                        registry=self.agent_registry,
-                        event=event,
-                    )
-                    continue
-
-                if isinstance(runtime_pool, ProcessPoolExecutor):
-                    runtime_pool.submit(
-                        _handle_process_pool_worker_event,
-                        event=event,
-                    )
-                elif isinstance(runtime_pool, ThreadPoolExecutor):
-                    runtime_pool.submit(
-                        handle_event_gracefully,
-                        session_repository=self.session_repository,
-                        scheduler=self.scheduler,
-                        registry=self.agent_registry,
-                        event=event,
-                    )
-                elif isinstance(runtime_pool, GeventPool):
-                    runtime_pool.spawn(
-                        handle_event_gracefully,
-                        session_repository=self.session_repository,
-                        scheduler=self.scheduler,
-                        registry=self.agent_registry,
-                        event=event,
-                    )
+            self._process_events(queues=queues, pool=runtime_pool)
         except KeyboardInterrupt:
             console.print("\n[bold red]Shutting down...[/]")
             self._shutdown(pool=runtime_pool)
 
     def _shutdown(
-        self, *, pool: ProcessPoolExecutor | GeventPool | ThreadPoolExecutor
+        self,
+        *,
+        pool: GeventPool | ThreadPoolExecutor | ProcessPoolExecutor | None,
     ) -> None:
         self.should_process_events = False
         if isinstance(pool, (ThreadPoolExecutor, ProcessPoolExecutor)):

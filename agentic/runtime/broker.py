@@ -39,7 +39,6 @@ class InMemoryAgentRuntimeTaskBroker(AgentRuntimeTaskBroker):
     @override
     def notify(self, *, event: AgentRuntimeEvent, queue: str) -> None:
         self.queue_registry[queue].put(event)
-        print(f"{id(self)}:memory: event added")
 
     @override
     def get_event(self, *, queues: Sequence[str]) -> AgentRuntimeEvent:

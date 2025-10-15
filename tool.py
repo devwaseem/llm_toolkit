@@ -238,9 +238,6 @@ def func2tool(
         }
         properties.update(schema_props)
 
-        # if param.default:
-        #     properties["default"] = param.default
-
         parameters.properties[name] = properties
 
         if not is_optional and param.default == inspect.Parameter.empty:
